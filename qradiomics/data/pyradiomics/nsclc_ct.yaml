@@ -1,0 +1,36 @@
+# NSCLC CT PyRadiomics Configuration
+# Optimized for lung tumor (GTV) radiomics analysis
+# Reference: JeffLungRadiomics/configs/radiomics/nsclc_radiomics_config.yaml
+
+# ##############################  Extracted using PyRadiomics version: 3.x  ######################################
+
+imageType:
+  Original: {}
+  Exponential: {}
+  Gradient: {}
+  LBP2D: {}
+  LBP3D: {}
+  Logarithm: {}
+  Square: {}
+  SquareRoot: {}
+  Wavelet:
+    start_level: 0
+    level: 3
+    wavelet: coif1
+
+setting:
+  # Resampling: 1mm isotropic for consistent feature extraction across scanners
+  resampledPixelSpacing: [1.0, 1.0, 1.0]
+  interpolator: sitkBSpline
+
+  # Intensity: CT uses HU — do NOT normalize (standardized physical units)
+  normalize: false
+  binWidth: 25
+
+  # Geometry: Real-world DICOM/NRRD pairs may have minor geometry mismatches
+  geometryTolerance: 1e-3
+  correctMask: true
+
+  # Quality control
+  minimumROIDimensions: 2
+  minimumROISize: 64

@@ -1,0 +1,12 @@
+# CT params: ORIGINAL features only (no wavelet/LoG/LBP)
+# ≈ 110 features per extraction. ~10× faster than ct_default.yaml.
+# Use for cohort-scale screening; switch back to ct_default.yaml for final reproduction.
+
+imageType:
+  Original: {}
+
+setting:
+  normalize: false
+  binWidth: 25
+  geometryTolerance: 1e-3
+  correctMask: true

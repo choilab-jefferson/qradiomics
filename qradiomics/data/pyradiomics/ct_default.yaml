@@ -1,0 +1,26 @@
+# This is an example of settings that can be used as a starting point for analyzing CT data. This is only intended as a
+# starting point and is not likely to be the optimal settings for your dataset. Some points in determining better values
+# are added as comments where appropriate
+
+# When adapting and using these settings for an analysis, be sure to add the PyRadiomics version used to allow you to
+# easily recreate your extraction at a later timepoint:
+
+# #############################  Extracted using PyRadiomics version: <version>  ######################################
+
+imageType:
+  Original: {}
+  Exponential: {}
+  Gradient: {}
+  LBP2D: {}
+  LBP3D: {}
+  Logarithm: {}
+  Square: {}
+  SquareRoot: {}
+  Wavelet: {}
+
+setting:
+  normalize: false
+  # normalizeScale: 100  # This allows you to use more or less the same bin width.
+  binWidth: 25
+  geometryTolerance: 1e-3
+  correctMask: true

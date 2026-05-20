@@ -1,0 +1,93 @@
+# CT Default Radiomics Pattern Template
+# General CT radiomics with all 9 image types for maximum feature extraction
+
+pattern_id: ct-default
+name: "CT Default Radiomics"
+version: "1.0"
+description: |
+  General purpose CT radiomics pattern with all 9 PyRadiomics image types.
+  Extracts 1000+ features per patient from Original, Exponential, Gradient,
+  LBP2D, LBP3D, Logarithm, Square, SquareRoot, and Wavelet image types.
+
+tags:
+  - ct
+  - general
+  - multi-type
+
+author: "QRadiomics Team"
+created_at: "2026-04-01"
+updated_at: "2026-04-01"
+
+requirements:
+  modalities:
+    - modality: CT
+      required: true
+      description: "CT imaging"
+    - modality: RTSTRUCT
+      required: false
+      description: "Segmentation (optional but recommended)"
+
+  anatomical_region: any
+
+  clinical_variables:
+    required: []
+    optional: []
+
+preprocessing:
+  resample_spacing: [1.0, 1.0, 1.0]
+  interpolate: sitkBSpline
+  mask_padding: 5
+
+feature_extraction:
+  extractor: pyradiomics
+  config_ref: pyradiomics/ct_default.yaml
+
+  # All 9 image types for 1000+ features
+  image_types:
+    - Original
+    - Exponential
+    - Gradient
+    - LBP2D
+    - LBP3D
+    - Logarithm
+    - Square
+    - SquareRoot
+    - Wavelet
+
+  feature_classes:
+    - firstorder
+    - shape
+    - glcm
+    - glrlm
+    - glszm
+    - gldm
+    - ngtdm
+
+  settings:
+    binWidth: 25
+    correctMask: true
+    geometryTolerance: 1e-3
+    interpolator: sitkBSpline
+    normalize: false
+    resampledPixelSpacing: [1.0, 1.0, 1.0]
+
+  quality_control:
+    min_roi_size: 64
+    min_dimensions: 2
+
+analysis:
+  methods:
+    - survival
+    - classification
+
+reporting:
+  report_types:
+    - feature_statistics
+    - model_performance
+    - feature_importance
+
+execution:
+  batch_size: 10
+  concurrency: 1
+  retry_on_failure: true
+  max_retries: 3
