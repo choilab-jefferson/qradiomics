@@ -1,0 +1,67 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+venv/
+env/
+
+# Test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+coverage.xml
+junit.xml/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Editor swap files
+*.swp
+*.swo
+*~
+
+# Logs and runtime artifacts
+*.log
+*.pid
+
+# Project artifacts (analysis outputs — not source)
+artifacts/
+
+# Pipeline run outputs (DICOM, NRRD, features, models — large)
+pipelines/runs/
+pipelines/*/runs/
+
+# Per-cohort downloaded clinical CSVs (PHI risk + cohort-specific)
+pipelines/*/clinical/clinical.csv
+
+# Anonymised clinical outputs of pipelines/heart_local/extract_clinical.py.
+# Even with PHI columns dropped + PatientIDs mapped to AnonPatient_NNNN,
+# these still encode patient-level outcomes from internal data and are
+# redistributed only with explicit study approval.
+pipelines/heart_local/clinical_anon/
+# Anonymisation maps (re-identification keys) — never publish.
+**/anonymization_map.csv
+**/pid_map.csv

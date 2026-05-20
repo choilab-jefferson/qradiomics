@@ -1,0 +1,15 @@
+# PET.yaml
+imageType:
+  Original: {}
+  Exponential: {}
+  Gradient: {}
+  LBP2D: {}
+  LBP3D: {}
+  Logarithm: {}
+  Square: {}
+  SquareRoot: {}
+  Wavelet: {}
+
+setting:
+  normalize: false
+  binWidth: 0.25

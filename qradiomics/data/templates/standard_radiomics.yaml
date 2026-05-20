@@ -1,0 +1,227 @@
+# Standard Radiomics Pattern Template
+# General-purpose single-timepoint radiomics analysis
+# For classification or regression tasks on any anatomical region
+
+pattern_id: standard-radiomics
+name: "Standard Radiomics Analysis"
+version: "1.0"
+description: |
+  General-purpose radiomics workflow for single-timepoint imaging studies.
+  Supports classification (binary/multi-class) and regression tasks.
+  Suitable for tumor characterization, treatment response prediction, etc.
+
+tags:
+  - general
+  - classification
+  - regression
+  - single-timepoint
+
+author: "QRadiomics Team"
+created_at: "2025-12-29"
+updated_at: "2026-01-06"
+
+# =============================================================================
+# SNIPPETS - Reusable code components from COMB
+# =============================================================================
+snippets:
+  - name: template_radiomics
+    version: latest
+    required: true
+    description: "PyRadiomics feature extraction"
+  - name: template_data_utils
+    version: latest
+    required: true
+    description: "Data loading and preprocessing utilities"
+  - name: template_ml_basic
+    version: latest
+    required: true
+    description: "Basic ML classification/regression pipeline"
+  - name: template_shap
+    version: latest
+    required: false
+    description: "SHAP explainability analysis"
+
+# =============================================================================
+# REQUIREMENTS
+# =============================================================================
+requirements:
+  modalities:
+    - modality: CT
+      required: false
+      description: "CT imaging"
+    - modality: PT
+      required: false
+      description: "PET imaging"
+    - modality: MR
+      required: false
+      description: "MRI imaging"
+    - modality: RTSTRUCT
+      required: true
+      description: "Segmentation"
+
+  # At least one imaging modality required
+  modality_rules:
+    min_required: 1
+    from: [CT, PT, MR]
+
+  anatomical_region: general
+
+  roi_types: [] # Flexible
+
+  clinical_variables:
+    required:
+      - name: outcome
+        type: any
+        description: "Target variable for prediction"
+    optional:
+      - name: age
+        type: numeric
+      - name: gender
+        type: categorical
+
+  min_subjects: 20
+
+# =============================================================================
+# PREPROCESSING
+# =============================================================================
+preprocessing:
+  crop:
+    enabled: true
+    margin_mm: 10
+    to_roi: true
+
+  resample:
+    enabled: true
+    spacing: [1.0, 1.0, 1.0]
+    interpolation: bspline
+
+  normalization:
+    method: zscore
+    per_modality: true
+
+  intensity_windowing:
+    CT:
+      window_center: 40
+      window_width: 400
+    MR:
+      percentile_normalization: true
+      lower_percentile: 1
+      upper_percentile: 99
+
+# =============================================================================
+# FEATURE EXTRACTION
+# =============================================================================
+feature_extraction:
+  extractor: pyradiomics
+  # Config selected based on modality: CT -> ct_default.yaml, PET -> pet_default.yaml
+  config_ref:
+    CT: pyradiomics/ct_default.yaml
+    PET: pyradiomics/pet_default.yaml
+
+  image_types:
+    - Original
+
+  feature_classes:
+    - firstorder
+    - shape
+    - glcm
+    - glrlm
+    - glszm
+
+  settings:
+    # DO NOT normalize CT/PET - they are already standardized physical units
+    # CT: Hounsfield Units (HU), PET: Standardized Uptake Value (SUV)
+    normalize: false
+    binWidth:
+      CT: 25
+      PET: 0.5
+
+  quality_control:
+    icc_threshold: 0.8
+    min_voxels: 10
+    check_nan: true
+
+# =============================================================================
+# ANALYSIS
+# =============================================================================
+analysis:
+  task: classification # or "regression"
+
+  feature_selection:
+    method: mrmr
+    max_features: 20
+    variance_threshold: 0.01
+    correlation_threshold: 0.9
+
+  modeling:
+    algorithms:
+      - RandomForest
+      - LogisticRegression
+      - SVM
+
+    regression_algorithms:
+      - RandomForest
+      - Ridge
+      - SVR
+
+    default_params:
+      RandomForest:
+        n_estimators: 100
+        max_depth: 10
+      LogisticRegression:
+        C: 1.0
+      SVM:
+        kernel: rbf
+        C: 1.0
+
+  validation:
+    method: cross_validation
+    folds: 5
+    stratify_by: outcome
+
+  metrics:
+    classification:
+      - auc
+      - accuracy
+      - f1
+      - precision
+      - recall
+    regression:
+      - rmse
+      - mae
+      - r2
+
+# =============================================================================
+# REPORTING
+# =============================================================================
+reporting:
+  include:
+    - data_summary
+    - feature_importance
+    - model_performance
+    - roc_curves
+    - confusion_matrix
+
+  compliance_checks:
+    - TRIPOD
+    - RQS
+
+  format: html
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+execution:
+  parallelization:
+    enabled: true
+    n_jobs: -1
+
+  caching:
+    use_cache: true
+    cache_features: true
+
+  nextflow:
+    enabled: true
+    profile: local
+    max_memory: "16.GB"
+    max_cpus: 8

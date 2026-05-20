@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qradiomics"
+version = "0.9.0"
+description = "Radiomics research CLI — extract, merge, analyze in one Unix-style pipeline."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Wookjin Choi", email = "wookjin.choi@jefferson.edu"},
+    {name = "Pradeep Bhetwal"},
+]
+keywords = ["radiomics", "pyradiomics", "cli", "tcia", "lung-cancer", "medical-imaging"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.0.0",
+    "httpx>=0.24.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "pyradiomics>=3.1.0",
+    "pydicom>=2.4",
+    "SimpleITK>=2.2.0",
+    "numpy>=1.24.0",
+    "pandas>=1.5.0",
+    "scikit-learn>=1.2.0",
+    "scikit-image>=0.21.0",
+    "lifelines>=0.27.0",
+    "statsmodels>=0.14.0",
+    "scipy>=1.10.0",
+]
+
+[project.optional-dependencies]
+shap = ["shap>=0.41.0"]
+rtstruct = ["rt-utils>=1.2.7"]
+prefect = ["prefect>=2.10"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/choilab-jefferson/qradiomics"
+Repository = "https://github.com/choilab-jefferson/qradiomics"
+"Bug Tracker" = "https://github.com/choilab-jefferson/qradiomics/issues"
+
+[project.scripts]
+qradiomics = "qradiomics.cli.main:cli"
+qr = "qradiomics.cli.main:cli"
+qrdx = "qradiomics.cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qradiomics*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"qradiomics" = ["data/templates/*.yaml", "data/pyradiomics/*.yaml", "data/schema/*.yaml"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

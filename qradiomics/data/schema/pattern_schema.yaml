@@ -1,0 +1,394 @@
+# Pattern Schema Definition
+# JSON Schema-style validation for radiomics workflow patterns
+# Patterns are REUSABLE TEMPLATES - they should NOT contain dataset-specific values
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "radiomics-pattern-schema-v1"
+title: "Radiomics Pattern Schema"
+version: "1.0"
+description: "Schema for validating radiomics workflow pattern templates"
+
+# =============================================================================
+# PATTERN STRUCTURE
+# =============================================================================
+# A pattern defines HOW to process data, not WHAT data to process
+# Dataset-specific values are provided at job creation time
+
+required_fields:
+  - pattern_id
+  - name
+  - version
+  - description
+  - requirements
+  - preprocessing
+  - feature_extraction
+  - analysis
+
+# =============================================================================
+# 1. PATTERN METADATA
+# =============================================================================
+pattern_metadata:
+  pattern_id:
+    type: string
+    pattern: "^[a-z][a-z0-9_-]*$"
+    description: "Unique identifier (kebab-case)"
+    examples: ["delta-radiomics", "cardiac-ct-survival", "lung-toxicity"]
+
+  name:
+    type: string
+    max_length: 100
+    description: "Human-readable pattern name"
+
+  version:
+    type: string
+    pattern: "^\\d+\\.\\d+(\\.\\d+)?$"
+    description: "Semantic version"
+
+  description:
+    type: string
+    max_length: 500
+    description: "Brief description of what this pattern does"
+
+  tags:
+    type: array
+    items: string
+    description: "Searchable tags"
+    examples: [["cardiac", "survival", "delta"], ["lung", "toxicity", "ct"]]
+
+  author:
+    type: string
+    description: "Pattern author/maintainer"
+
+  created_at:
+    type: string
+    format: date
+
+  updated_at:
+    type: string
+    format: date
+
+# =============================================================================
+# 2. REQUIREMENTS - What data this pattern needs
+# =============================================================================
+requirements:
+  modalities:
+    type: array
+    items:
+      type: object
+      properties:
+        modality:
+          type: string
+          enum: ["CT", "PT", "MR", "RTSTRUCT", "RTDOSE", "RTPLAN", "SEG"]
+        required:
+          type: boolean
+        description:
+          type: string
+        time_points:
+          type: array
+          items: string
+          description: "e.g., ['pre', 'post'] for delta radiomics"
+
+  anatomical_region:
+    type: string
+    enum:
+      [
+        "heart",
+        "lung",
+        "breast",
+        "head_neck",
+        "abdomen",
+        "pelvis",
+        "brain",
+        "general",
+      ]
+
+  roi_types:
+    type: array
+    items: string
+    description: "Expected ROI names/types"
+    examples: [["Heart", "LV", "RV"], ["GTV", "PTV", "Lung"]]
+
+  clinical_variables:
+    type: object
+    properties:
+      required:
+        type: array
+        items:
+          type: object
+          properties:
+            name: { type: string }
+            type:
+              {
+                type: string,
+                enum: ["numeric", "categorical", "binary", "date"],
+              }
+      optional:
+        type: array
+        items:
+          type: object
+          properties:
+            name: { type: string }
+            type: { type: string }
+
+  min_subjects:
+    type: integer
+    minimum: 1
+    default: 10
+    description: "Minimum recommended subjects for this pattern"
+
+# =============================================================================
+# 3. PREPROCESSING - How to prepare data
+# =============================================================================
+preprocessing:
+  crop:
+    type: object
+    properties:
+      enabled: { type: boolean, default: true }
+      margin_mm: { type: number, default: 10 }
+      to_roi: { type: boolean, default: true }
+
+  resample:
+    type: object
+    properties:
+      enabled: { type: boolean, default: true }
+      spacing:
+        type: array
+        items: number
+        min_items: 3
+        max_items: 3
+        default: [1.0, 1.0, 1.0]
+      interpolation:
+        {
+          type: string,
+          enum: ["linear", "nearest", "bspline"],
+          default: "linear",
+        }
+
+  normalization:
+    type: object
+    properties:
+      method:
+        {
+          type: string,
+          enum: ["none", "zscore", "minmax", "histogram"],
+          default: "zscore",
+        }
+      per_modality: { type: boolean, default: true }
+
+  intensity_windowing:
+    type: object
+    description: "Modality-specific intensity windows"
+    properties:
+      CT:
+        type: object
+        properties:
+          window_center: { type: number }
+          window_width: { type: number }
+      PT:
+        type: object
+        properties:
+          suv_normalization: { type: boolean, default: true }
+
+# =============================================================================
+# 4. FEATURE EXTRACTION - How to extract features
+# =============================================================================
+feature_extraction:
+  extractor:
+    type: string
+    enum: ["pyradiomics", "custom"]
+    default: "pyradiomics"
+
+  config_ref:
+    type: string
+    description: "Reference to PyRadiomics config file"
+    examples: ["pyradiomics/ct_default.yaml", "pyradiomics/pet_default.yaml"]
+
+  image_types:
+    type: array
+    items:
+      type: string
+      enum:
+        [
+          "Original",
+          "Wavelet",
+          "LoG",
+          "Square",
+          "SquareRoot",
+          "Logarithm",
+          "Exponential",
+          "Gradient",
+          "LBP2D",
+          "LBP3D",
+        ]
+    default: ["Original"]
+
+  feature_classes:
+    type: array
+    items:
+      type: string
+      enum: ["firstorder", "shape", "glcm", "glrlm", "glszm", "gldm", "ngtdm"]
+    default: ["firstorder", "shape", "glcm", "glrlm", "glszm"]
+
+  settings:
+    type: object
+    properties:
+      normalize: { type: boolean, default: true }
+      normalizeScale: { type: number, default: 100 }
+      binWidth: { type: number, default: 25 }
+      geometryTolerance: { type: number, default: 0.0001 }
+
+  delta_features:
+    type: object
+    description: "For delta radiomics patterns"
+    properties:
+      enabled: { type: boolean, default: false }
+      time_points:
+        type: array
+        items: string
+        examples: [["pre", "post"], ["baseline", "followup"]]
+      methods:
+        type: array
+        items: string
+        enum: ["difference", "ratio", "percent_change"]
+        default: ["difference", "ratio"]
+
+  quality_control:
+    type: object
+    properties:
+      icc_threshold: { type: number, minimum: 0, maximum: 1, default: 0.8 }
+      min_voxels: { type: integer, default: 10 }
+      check_nan: { type: boolean, default: true }
+
+# =============================================================================
+# 5. ANALYSIS - How to analyze features
+# =============================================================================
+analysis:
+  task:
+    type: string
+    enum: ["survival", "classification", "regression", "clustering"]
+
+  feature_selection:
+    type: object
+    properties:
+      method:
+        type: string
+        enum:
+          ["none", "lasso", "boruta", "mrmr", "rfe", "variance", "correlation"]
+        default: "mrmr"
+      max_features: { type: integer, default: 20 }
+      variance_threshold: { type: number, default: 0.01 }
+      correlation_threshold: { type: number, default: 0.9 }
+
+  modeling:
+    type: object
+    properties:
+      algorithms:
+        type: array
+        items:
+          type: string
+          enum:
+            [
+              "LogisticRegression",
+              "RandomForest",
+              "SVM",
+              "XGBoost",
+              "CoxPH",
+              "RandomSurvivalForest",
+              "GradientBoosting",
+              "KMeans",
+              "DBSCAN",
+              "Ridge",
+              "Lasso",
+            ]
+      default_params:
+        type: object
+        description: "Default hyperparameters per algorithm"
+
+  validation:
+    type: object
+    properties:
+      method:
+        type: string
+        enum: ["cross_validation", "holdout", "bootstrap", "nested_cv"]
+        default: "cross_validation"
+      folds: { type: integer, default: 5 }
+      stratify_by: { type: string, description: "Column to stratify by" }
+      test_size: { type: number, minimum: 0.1, maximum: 0.5, default: 0.2 }
+
+  metrics:
+    type: object
+    properties:
+      classification:
+        type: array
+        items: string
+        default: ["auc", "accuracy", "f1", "precision", "recall"]
+      survival:
+        type: array
+        items: string
+        default: ["c_index", "integrated_brier_score", "calibration_slope"]
+      regression:
+        type: array
+        items: string
+        default: ["rmse", "mae", "r2"]
+
+# =============================================================================
+# 6. REPORTING - What outputs to generate
+# =============================================================================
+reporting:
+  include:
+    type: array
+    items:
+      type: string
+      enum:
+        [
+          "data_summary",
+          "feature_importance",
+          "model_performance",
+          "roc_curves",
+          "confusion_matrix",
+          "survival_curves",
+          "calibration_plot",
+          "feature_correlation",
+        ]
+    default: ["data_summary", "feature_importance", "model_performance"]
+
+  compliance_checks:
+    type: array
+    items:
+      type: string
+      enum: ["TRIPOD", "RQS", "IBSI", "CLAIM"]
+    description: "Reporting guidelines to check against"
+
+  format:
+    type: string
+    enum: ["html", "pdf", "markdown"]
+    default: "html"
+
+# =============================================================================
+# 7. EXECUTION - Runtime settings
+# =============================================================================
+execution:
+  parallelization:
+    type: object
+    properties:
+      enabled: { type: boolean, default: true }
+      n_jobs: { type: integer, default: -1, description: "-1 = all cores" }
+
+  caching:
+    type: object
+    properties:
+      use_cache: { type: boolean, default: true }
+      cache_features: { type: boolean, default: true }
+
+  nextflow:
+    type: object
+    properties:
+      enabled: { type: boolean, default: true }
+      profile:
+        {
+          type: string,
+          enum: ["local", "docker", "singularity", "slurm"],
+          default: "local",
+        }
+      max_memory: { type: string, default: "16.GB" }
+      max_cpus: { type: integer, default: 8 }

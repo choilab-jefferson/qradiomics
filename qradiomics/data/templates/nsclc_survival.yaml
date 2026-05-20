@@ -1,0 +1,192 @@
+# NSCLC Survival Radiomics Pattern Template
+# Lung CT radiomics for overall survival prediction
+# Validated datasets: NSCLC-Radiomics (TCIA Lung1), NSCLC-Cetuximab
+
+pattern_id: nsclc-survival
+name: "NSCLC CT Survival Radiomics"
+version: "1.0"
+description: |
+  Radiomics workflow for NSCLC CT data targeting overall survival prediction.
+  Uses GTV segmentation from RTSTRUCT. Supports cross-dataset validation
+  (train on NSCLC-Radiomics, validate on NSCLC-Cetuximab).
+  Based on JeffLungRadiomics proven settings (LoG, Wavelet coif1, 1mm resampling).
+
+tags:
+  - nsclc
+  - lung
+  - ct
+  - survival
+  - gtv
+  - single-timepoint
+
+author: "QRadiomics Team"
+created_at: "2026-03-26"
+updated_at: "2026-03-26"
+
+# =============================================================================
+# REQUIREMENTS
+# =============================================================================
+requirements:
+  modalities:
+    - modality: CT
+      required: true
+      description: "Lung CT imaging"
+    - modality: RTSTRUCT
+      required: true
+      description: "GTV segmentation (RTStruct)"
+
+  anatomical_region: lung
+  roi_types:
+    - GTV
+    - gtv
+    - GTV-1
+    - TUMOR
+    - MASS
+
+  clinical_variables:
+    required:
+      - name: OS_months
+        type: numeric
+        description: "Overall survival in months"
+      - name: OS_event
+        type: binary
+        description: "Death event indicator (1=event, 0=censored)"
+    optional:
+      - name: age
+        type: numeric
+      - name: gender
+        type: categorical
+      - name: stage
+        type: categorical
+      - name: histology
+        type: categorical
+
+  min_subjects: 50
+
+# =============================================================================
+# PREPROCESSING
+# =============================================================================
+preprocessing:
+  crop:
+    enabled: true
+    margin_mm: 5
+    to_roi: true
+
+  resample:
+    enabled: true
+    spacing: [1.0, 1.0, 1.0]
+    interpolation: bspline
+
+  normalization:
+    method: none # CT HU values are already standardized
+
+  intensity_windowing:
+    CT:
+      window_center: -600
+      window_width: 1500 # Lung window
+
+# =============================================================================
+# FEATURE EXTRACTION
+# =============================================================================
+feature_extraction:
+  extractor: pyradiomics
+  config_ref:
+    CT: pyradiomics/nsclc_ct.yaml
+
+  image_types:
+    - Original
+    - LoG
+    - Wavelet
+    - Square
+    - SquareRoot
+    - Logarithm
+
+  feature_classes:
+    - firstorder
+    - shape
+    - glcm
+    - glrlm
+    - glszm
+    - gldm
+    - ngtdm
+
+  settings:
+    normalize: false
+    binWidth: 25
+    correctMask: true
+    geometryTolerance: 1e-3
+
+  quality_control:
+    min_voxels: 64
+    max_volume_mm3: 500000
+    check_nan: true
+    hounsfield_range: [-1000, 3000]
+
+# =============================================================================
+# ANALYSIS
+# =============================================================================
+analysis:
+  task: survival
+
+  feature_selection:
+    method: mrmr
+    max_features: 20
+    variance_threshold: 0.01
+    correlation_threshold: 0.9
+
+  modeling:
+    algorithms:
+      - CoxPH
+      - RandomSurvivalForest
+
+    default_params:
+      CoxPH:
+        penalizer: 0.1
+      RandomSurvivalForest:
+        n_estimators: 100
+        min_samples_leaf: 10
+
+  validation:
+    method: cross_validation
+    folds: 5
+    stratify_by: OS_event
+    external_validation: true # Use NSCLC_Cetuximab as external validation
+
+  metrics:
+    survival:
+      - c_index
+      - brier_score
+      - log_rank_p
+
+# =============================================================================
+# REPORTING
+# =============================================================================
+reporting:
+  include:
+    - data_summary
+    - feature_importance
+    - kaplan_meier_curves
+    - cox_forest_plot
+    - calibration_curve
+
+  compliance_checks:
+    - TRIPOD
+    - RQS
+
+  format: html
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+execution:
+  parallelization:
+    enabled: true
+    n_jobs: -1
+
+  caching:
+    use_cache: true
+    cache_features: true
+
+  nextflow:
+    enabled: false # Direct PyRadiomics for NSCLC datasets
+    profile: local
