@@ -15,6 +15,7 @@ from qradiomics.cli.commands import (
     hu_correct,
     lidc,
     ml,
+    pacs,
     preprocess,
     register,
     results,
@@ -64,6 +65,7 @@ cli.add_command(delta)
 cli.add_command(results)
 cli.add_command(analyze)
 cli.add_command(ml)
+cli.add_command(pacs)
 cli.add_command(workflow)
 cli.add_command(config)
 

@@ -1,0 +1,46 @@
+# qradiomics PACS connection profiles.
+#
+# Copy this file to one of the locations qr searches automatically:
+#   ./qradiomics-pacs.yaml             (project-local; gitignored by default)
+#   ~/.config/qradiomics/pacs.yaml     (user-wide)
+#   or set $QR_PACS_CONFIG to any path.
+#
+# Use --profile NAME with `qr pacs` subcommands, or set default_profile below.
+# ${VAR} or ${VAR:-fallback} are expanded from the environment.
+
+default_profile: local_orthanc
+
+profiles:
+
+  # Orthanc REST API (e.g. local docker-orthanc dev instance).
+  local_orthanc:
+    backend: orthanc
+    base_url: http://localhost:8042
+    username: orthanc
+    password: ${ORTHANC_PASSWORD:-}
+    timeout: 60
+    verify_ssl: false
+
+  # DICOMweb — Orthanc with the dicom-web plugin enabled.
+  local_dicomweb:
+    backend: dicomweb
+    base_url: http://localhost:8042/dicom-web
+    username: orthanc
+    password: ${ORTHANC_PASSWORD:-}
+    verify_ssl: false
+
+  # DICOMweb — bearer-token authenticated remote PACS.
+  research_dicomweb:
+    backend: dicomweb
+    base_url: https://pacs.example.com/dicom-web
+    auth_token: ${PACS_BEARER_TOKEN}
+    verify_ssl: true
+
+  # Classic DIMSE PACS reachable on a private VLAN.
+  hospital_dimse:
+    backend: dimse
+    host: pacs.hospital.local
+    port: 4242
+    aet: HOSPITAL_PACS
+    aec: QRADIOMICS
+    timeout: 120
