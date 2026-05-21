@@ -257,3 +257,105 @@ class OrthancBackend(PACSBackend):
             headers={"Content-Type": "application/dicom"},
         )
         return r.json() if r.text else {"status": r.status_code}
+
+    # ------------------------------------------------------------------ remote modalities
+
+    def list_modalities(self) -> List[str]:
+        """List remote modalities registered on this Orthanc."""
+        return self._get("/modalities").json()
+
+    def get_modality_config(self, modality: str) -> Dict[str, Any]:
+        """Return host/port/AET config for a registered modality."""
+        return self._get(f"/modalities/{modality}/configuration").json()
+
+    def echo_modality(self, modality: str) -> bool:
+        """C-ECHO a remote modality through Orthanc."""
+        try:
+            self._post(f"/modalities/{modality}/echo", json_data={})
+            return True
+        except PACSError:
+            return False
+
+    def query_remote(
+        self,
+        modality: str,
+        level: str = "Study",
+        **query: Any,
+    ) -> Dict[str, Any]:
+        """Issue a C-FIND against a remote modality via Orthanc.
+
+        Returns Orthanc's query handle dict — pass it (or its ``ID``) to
+        :meth:`retrieve_query` to trigger the C-MOVE step.
+        """
+        clean = {k: str(v) for k, v in query.items() if v is not None}
+        body = {"Level": level, "Query": clean}
+        r = self._post(f"/modalities/{modality}/query", json_data=body)
+        return r.json()
+
+    def query_answers(self, query_id: str) -> List[Dict[str, Any]]:
+        """Return the answer rows for a previously issued remote query."""
+        ids = self._get(f"/queries/{query_id}/answers").json()
+        answers: List[Dict[str, Any]] = []
+        for ans_id in ids:
+            data = self._get(
+                f"/queries/{query_id}/answers/{ans_id}/content?simplify"
+            ).json()
+            answers.append(data)
+        return answers
+
+    def retrieve_query(
+        self,
+        query_id: str,
+        target_aet: Optional[str] = None,
+        synchronous: bool = True,
+    ) -> Dict[str, Any]:
+        """Trigger a C-MOVE for every answer of ``query_id``.
+
+        ``target_aet`` defaults to Orthanc's own ``DicomAet`` (so the
+        remote PACS sends instances back here). Set ``synchronous=False``
+        to return immediately with a job handle.
+        """
+        body: Dict[str, Any] = {"Synchronous": bool(synchronous)}
+        if target_aet:
+            body["TargetAet"] = target_aet
+        r = self._post(f"/queries/{query_id}/retrieve", json_data=body)
+        return r.json() if r.text else {"status": r.status_code}
+
+    def retrieve_from(
+        self,
+        modality: str,
+        level: str = "Study",
+        target_aet: Optional[str] = None,
+        synchronous: bool = True,
+        **query: Any,
+    ) -> Dict[str, Any]:
+        """One-shot remote retrieve: query + retrieve.
+
+        Convenience for ``query_remote`` followed by ``retrieve_query``.
+        Returns ``{"query_id", "answers", "retrieve"}``.
+        """
+        handle = self.query_remote(modality, level=level, **query)
+        qid = handle.get("ID") or handle.get("Path", "").rsplit("/", 1)[-1]
+        if not qid:
+            raise PACSError(f"Orthanc returned no query id: {handle}")
+        answers = self.query_answers(qid)
+        retrieve = self.retrieve_query(
+            qid, target_aet=target_aet, synchronous=synchronous
+        )
+        return {"query_id": qid, "answers": answers, "retrieve": retrieve}
+
+    # ------------------------------------------------------------------ changes feed
+
+    def get_changes(
+        self,
+        since: int = 0,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """Read the Orthanc changes feed.
+
+        Returns ``{"Changes": [...], "Done": bool, "Last": int}``. Used to
+        detect new instances/series/studies pushed in by an external SCU
+        (e.g. MIM Assistant).
+        """
+        r = self._get(f"/changes?since={int(since)}&limit={int(limit)}")
+        return r.json()
