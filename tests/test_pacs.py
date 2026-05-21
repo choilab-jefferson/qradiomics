@@ -327,3 +327,116 @@ def test_make_backend_dicomweb_alias(tmp_path):
     backend = pacs.make_backend(profile)
     assert isinstance(backend, DICOMwebBackend)
     backend.close()
+
+
+# ---------------------------------------------------------------------------- Orthanc remote-modality / changes
+
+
+def test_orthanc_list_modalities():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/modalities"
+        return httpx.Response(200, json=["MIM", "Eclipse", "STORESCP"])
+
+    backend = _orthanc_backend(handler)
+    assert backend.list_modalities() == ["MIM", "Eclipse", "STORESCP"]
+
+
+def test_orthanc_get_modality_config():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/modalities/MIM/configuration"
+        return httpx.Response(
+            200,
+            json={"AET": "AE_MIM", "Host": "10.0.0.1", "Port": 4008},
+        )
+
+    backend = _orthanc_backend(handler)
+    cfg = backend.get_modality_config("MIM")
+    assert cfg["AET"] == "AE_MIM"
+    assert cfg["Port"] == 4008
+
+
+def test_orthanc_retrieve_from_chains_query_answers_retrieve(monkeypatch):
+    """``retrieve_from`` issues remote /query, lists /answers, and posts /retrieve."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append(f"{request.method} {path}")
+        if request.method == "POST" and path == "/modalities/MIM/query":
+            body = json.loads(request.content)
+            assert body["Level"] == "Study"
+            assert body["Query"] == {"PatientID": "PAT001"}
+            return httpx.Response(200, json={"ID": "Q1", "Path": "/queries/Q1"})
+        if request.method == "GET" and path == "/queries/Q1/answers":
+            return httpx.Response(200, json=["0", "1"])
+        if request.method == "GET" and path.startswith("/queries/Q1/answers/"):
+            return httpx.Response(
+                200,
+                json={
+                    "PatientID": "PAT001",
+                    "StudyInstanceUID": "1.2.3",
+                },
+            )
+        if request.method == "POST" and path == "/queries/Q1/retrieve":
+            body = json.loads(request.content)
+            assert body["Synchronous"] is True
+            assert body["TargetAet"] == "ORTHANC"
+            return httpx.Response(
+                200, json={"ID": "JOB1", "Path": "/jobs/JOB1"}
+            )
+        return httpx.Response(404)
+
+    backend = _orthanc_backend(handler)
+    result = backend.retrieve_from(
+        "MIM",
+        level="Study",
+        target_aet="ORTHANC",
+        PatientID="PAT001",
+    )
+    assert result["query_id"] == "Q1"
+    assert len(result["answers"]) == 2
+    assert result["retrieve"]["ID"] == "JOB1"
+    # Confirm the chain executed in the expected order
+    posts = [c for c in calls if c.startswith("POST")]
+    assert posts == ["POST /modalities/MIM/query", "POST /queries/Q1/retrieve"]
+
+
+def test_orthanc_get_changes_passes_since_limit():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/changes"
+        assert request.url.params.get("since") == "42"
+        assert request.url.params.get("limit") == "10"
+        return httpx.Response(
+            200,
+            json={
+                "Changes": [
+                    {
+                        "ChangeType": "StableStudy",
+                        "ResourceType": "Study",
+                        "ID": "study-1",
+                        "Date": "20260520T000000",
+                    }
+                ],
+                "Done": True,
+                "Last": 43,
+            },
+        )
+
+    backend = _orthanc_backend(handler)
+    page = backend.get_changes(since=42, limit=10)
+    assert page["Last"] == 43
+    assert page["Changes"][0]["ChangeType"] == "StableStudy"
+
+
+def test_orthanc_echo_modality_success_and_failure():
+    state = {"fail": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if state["fail"]:
+            return httpx.Response(500, text="Cannot reach modality")
+        return httpx.Response(200, json={})
+
+    backend = _orthanc_backend(handler)
+    assert backend.echo_modality("MIM") is True
+    state["fail"] = True
+    assert backend.echo_modality("MIM") is False
