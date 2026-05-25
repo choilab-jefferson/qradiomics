@@ -186,6 +186,10 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
             raise SystemExit(1)
         rt_path = candidates[0]
 
+    # Ensure RTSTRUCT has a valid preamble (often missing from TCIA downloads)
+    from qradiomics.io.dicom import fix_dicom_preamble
+    fix_dicom_preamble(rt_path, verbose=True)
+
     rt = RTStructBuilder.create_from(dicom_series_path=str(dicom_dir), rt_struct_path=str(rt_path))
     roi_names = rt.get_roi_names()
     if not roi_names:
@@ -337,3 +341,34 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
     click.echo(f"Wrote manifest with {len(rows)} patient(s) -> {output_path}")
     if skipped:
         click.echo(f"  skipped {len(skipped)} dir(s) without matching files (first 5): {skipped[:5]}")
+
+
+@convert.command("fix-preamble")
+@click.option(
+    "--input",
+    "-i",
+    "dicom_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to the DICOM/RTSTRUCT file with a missing/corrupt preamble",
+)
+def fix_preamble(dicom_path):
+    """Verify and fix in-place the DICOM preamble of a file if missing/corrupt.
+
+    Many DICOM and RTSTRUCT files downloaded directly from public archives (like
+    TCIA) lack the standard 128-byte DICOM preamble and 'DICM' prefix, causing
+    strict parsers like pydicom to fail.
+
+    This command inspects the file, and if the preamble is missing, automatically
+    reconstructs it in-place by reading the dataset with force=True, populating
+    the required Media Storage headers, and writing it back with a standard header.
+    """
+    from qradiomics.io.dicom import fix_dicom_preamble
+
+    p = Path(dicom_path)
+    success = fix_dicom_preamble(p, verbose=True)
+    if success:
+        click.echo(f"✓ DICOM preamble verified/repaired successfully for: {p}")
+    else:
+        click.echo(f"✗ Failed to repair DICOM preamble for: {p}", err=True)
+        raise SystemExit(1)

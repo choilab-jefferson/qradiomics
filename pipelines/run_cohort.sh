@@ -306,8 +306,8 @@ ERR_LOG="$ERR_LOG"
 PAT=\$(echo "\$SERIES_DIR" | awk -F/ '{print \$(NF-2)}')
 SERIES_UID=\$(basename "\$SERIES_DIR")
 mkdir -p "\$OUT_ROOT/series/\$PAT"
-# Accept both .dcm-suffixed and extensionless DICOM (TCIA quirk).
-N_DCM=\$(find "\$SERIES_DIR" -maxdepth 1 -type f \\( -name '*.dcm' -o ! -name '*.*' \\) 2>/dev/null | wc -l)
+# Accept both .dcm-suffixed and extensionless DICOM (TCIA quirk). Exclude LICENSE files.
+N_DCM=\$(find "\$SERIES_DIR" -maxdepth 1 -type f \\( -name '*.dcm' -o ! -name '*.*' \\) 2>/dev/null | grep -v -i "LICENSE" | wc -l)
 [ "\$N_DCM" -eq 0 ] && N_DCM=\$(ls "\$SERIES_DIR"/*.dcm 2>/dev/null | wc -l)
 
 _record_err() {
@@ -327,7 +327,7 @@ elif [ "\$N_DCM" -ge 1 ]; then
     # RTSTRUCT (1 dcm) — locate the referenced CT series anywhere under the
     # patient subtree (not just the same study) by reading the
     # ReferencedSeriesInstanceUID from the structure set.
-    RS=\$(find "\$SERIES_DIR" -maxdepth 1 -type f \\( -name '*.dcm' -o ! -name '*.*' \\) | head -1)
+    RS=\$(find "\$SERIES_DIR" -maxdepth 1 -type f \\( -name '*.dcm' -o ! -name '*.*' \\) | grep -v -i "LICENSE" | head -1)
     [ -z "\$RS" ] && RS=\$(ls "\$SERIES_DIR"/*.dcm 2>/dev/null | head -1)
     PATIENT_DIR=\$(dirname "\$(dirname "\$SERIES_DIR")")
     REF_UID=\$(python3 - "\$RS" <<PY
