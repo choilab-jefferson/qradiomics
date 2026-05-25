@@ -11,8 +11,8 @@
 # work unchanged.
 
 if [ -z "${QR:-}" ]; then
-    if command -v qr >/dev/null 2>&1 && qr workflow templates >/dev/null 2>&1; then
-        QR="qr"
+    if command -v qr >/dev/null 2>&1 && command qr workflow templates >/dev/null 2>&1; then
+        QR=$(command -v qr)
     else
         _qr_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
         export PYTHONPATH="${_qr_repo_root}${PYTHONPATH:+:$PYTHONPATH}"
