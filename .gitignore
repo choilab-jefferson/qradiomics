@@ -65,3 +65,11 @@ pipelines/heart_local/clinical_anon/
 # Anonymisation maps (re-identification keys) — never publish.
 **/anonymization_map.csv
 **/pid_map.csv
+
+# Local scratch wiki — the published wiki lives in the separate GitHub
+# wiki repo (qradiomics.wiki.git), never inside this source tree.
+wiki/
+
+# Raw downloaded imaging cohorts (DICOM/NRRD per patient) — large + PHI risk,
+# never source. e.g. lung1_raw/, <cohort>_raw/.
+*_raw/
