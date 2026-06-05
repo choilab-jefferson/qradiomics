@@ -56,8 +56,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/choilab-jefferson/qradiomics"
+Homepage = "https://qradiomics.com/"
 Repository = "https://github.com/choilab-jefferson/qradiomics"
+Documentation = "https://qradiomics.com/"
 "Bug Tracker" = "https://github.com/choilab-jefferson/qradiomics/issues"
 
 [project.scripts]
