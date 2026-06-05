@@ -4,13 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qradiomics"
-version = "0.9.0"
+version = "0.9.1"
 description = "Radiomics research CLI — extract, merge, analyze in one Unix-style pipeline."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Wookjin Choi", email = "wookjin.choi@jefferson.edu"},
-    {name = "Pradeep Bhetwal"},
+    {name = "Wookjin Choi, Pradeep Bhetwal", email = "wookjin.choi@jefferson.edu"}
 ]
 keywords = ["radiomics", "pyradiomics", "cli", "tcia", "lung-cancer", "medical-imaging"]
 classifiers = [
