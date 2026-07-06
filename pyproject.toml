@@ -31,19 +31,16 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.0.0",
     "rich>=13.0.0",
-    # pyradiomics 3.1.0 on PyPI ships a broken sdist (its metadata declares
-    # version 3.0.1a1), so pip discards it and ">=3.1.0" can never be
-    # satisfied from PyPI — `pip install qradiomics` then fails outright.
-    # 3.0.1 is the newest resolvable release and runs the full extract →
-    # merge → analyze chain unchanged, so pin to it. (kickoff.sh may still
-    # pull the 3.1.1.dev git build for the extra image filters.)
-    "pyradiomics>=3.0.1",
+    # pyradiomics has no PyPI wheel for cp310+ and its 3.1.0 sdist is broken
+    # (metadata declares 3.0.1a1). The supported install path is scripts/
+    # kickoff.sh, which installs pyradiomics 3.1.x from git first; pip then
+    # keeps that git build to satisfy ">=3.1.0". Do NOT loosen this to
+    # ">=3.0.1": that makes `pip install -e .` try to *build* the broken PyPI
+    # 3.1.0 sdist (instead of discarding it) and the kickoff install fails.
+    "pyradiomics>=3.1.0",
     "pydicom>=2.4",
     "SimpleITK>=2.2.0",
-    # pyradiomics <3.2 is built against the NumPy 1.x C API; NumPy 2.x breaks
-    # its compiled extensions at import time. Cap until pyradiomics ships a
-    # 2.x-compatible wheel.
-    "numpy>=1.24.0,<2.0",
+    "numpy>=1.24.0",
     "pandas>=1.5.0",
     "scikit-learn>=1.2.0",
     "scikit-image>=0.21.0",

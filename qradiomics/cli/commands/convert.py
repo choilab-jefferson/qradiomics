@@ -199,7 +199,21 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
     from qradiomics.io.dicom import fix_dicom_preamble
     fix_dicom_preamble(rt_path, verbose=True)
 
-    rt = RTStructBuilder.create_from(dicom_series_path=str(dicom_dir), rt_struct_path=str(rt_path))
+    # rt-utils reads the reference CT series here; if that directory holds no
+    # GDCM-readable DICOM (a real TCIA case — e.g. LUNG1-035, whose CT series
+    # GDCM can't parse), it raises a bare Exception. Turn that into a clean,
+    # non-zero exit instead of dumping a traceback mid-cohort-loop.
+    try:
+        rt = RTStructBuilder.create_from(
+            dicom_series_path=str(dicom_dir), rt_struct_path=str(rt_path)
+        )
+    except Exception as e:
+        click.echo(
+            f'Could not build RTSTRUCT from {rt_path} against CT series in '
+            f'{dicom_dir}: {e}. (Check that the reference CT is readable).',
+            err=True,
+        )
+        raise SystemExit(1)
     roi_names = rt.get_roi_names()
     if not roi_names:
         click.echo(f"No ROIs found in {rtstruct}", err=True)
@@ -208,7 +222,19 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
     target_roi = roi
     if target_roi is None:
         target_roi = roi_names[0]
-        click.echo(f"No --roi specified, using first ROI '{target_roi}' (available: {roi_names})")
+        if len(roi_names) > 1:
+            # Silently taking the first of several ROIs produces the wrong mask
+            # (e.g. a lung/cord contour instead of GTV-1) with no error. Make it
+            # loud so the caller notices and passes --roi.
+            click.echo(
+                f"WARNING: no --roi given and the structure set has {len(roi_names)} "
+                f"ROIs {roi_names}; defaulting to the FIRST one ('{target_roi}'), "
+                f"which is often NOT the intended target. Pass --roi explicitly.",
+                err=True,
+            )
+        else:
+            # Single-ROI RTSTRUCTs are unambiguous; stay quiet by default.
+            pass
     elif target_roi not in roi_names:
         # Case-insensitive fallback — RTSTRUCT ROI names are inconsistently cased
         # across institutions (e.g., "Heart" vs "heart" vs "HEART").
