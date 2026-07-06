@@ -63,7 +63,9 @@ def _process_one(args):
     "--pattern",
     "-p",
     default=None,
-    help="Pattern ID (qr pattern list). Omit to use PyRadiomics defaults.",
+    help="Pattern ID (qr pattern list). Omit to enable ALL image types and "
+         "feature classes (~1400 features, incl. wavelet/LoG/square/... — "
+         "NOT prefixed 'original_'). Pass a pattern for a curated subset.",
 )
 @click.option(
     "--output",
