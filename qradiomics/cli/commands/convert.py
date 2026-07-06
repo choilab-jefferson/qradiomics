@@ -209,8 +209,8 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
         )
     except Exception as e:
         click.echo(
-            f"Could not build RTSTRUCT from {rt_path} against CT series in "
-            f"{dicom_dir}: {e}. Skipping (check the reference CT is readable).",
+            f'Could not build RTSTRUCT from {rt_path} against CT series in '
+            f'{dicom_dir}: {e}. (Check that the reference CT is readable).',
             err=True,
         )
         raise SystemExit(1)
