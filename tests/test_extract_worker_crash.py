@@ -44,6 +44,20 @@ def _write_manifest(path):
 
 
 def test_extract_survives_killed_worker(tmp_path, monkeypatch):
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+    from functools import partial
+
+    # In Python 3.14+, the default start method on Linux changed from 'fork' to 'forkserver'.
+    # Under 'forkserver', monkeypatches in the parent process are not inherited by workers.
+    # We explicitly force ProcessPoolExecutor to use the 'fork' context for this test.
+    fork_context = multiprocessing.get_context("fork")
+    monkeypatch.setattr(
+        extract_mod,
+        "ProcessPoolExecutor",
+        partial(ProcessPoolExecutor, mp_context=fork_context),
+    )
+
     monkeypatch.setattr(extract_mod, "_process_one", _fake_process_one)
 
     manifest = tmp_path / "manifest.csv"
