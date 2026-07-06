@@ -41,8 +41,10 @@ def extract_features(
             aligned with ``image`` (use :func:`load_image_and_mask` or the
             caller's own resampling).
         params_file: Optional PyRadiomics YAML parameter file. When omitted,
-            ``RadiomicsFeatureExtractor`` runs with library defaults
-            (all image types and all feature classes enabled).
+            the extractor explicitly enables *all* image types and *all*
+            feature classes (via ``enableAllImageTypes`` /
+            ``enableAllFeatures``) — i.e. wavelet/LoG/square/etc., not just
+            the ``original_`` set. Pass a params file for a curated subset.
         label: Label value to extract within ``mask``.
         geometry_tolerance: ``geometryTolerance`` setting passed to PyRadiomics.
         include_diagnostics: When False (default), strip keys starting with

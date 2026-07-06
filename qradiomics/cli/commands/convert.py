@@ -7,6 +7,15 @@ from pathlib import Path
 import click
 
 
+def _glob_suffix(glob_pattern: str) -> str:
+    """Return the trailing literal of a ``*``-style glob.
+
+    ``"*_image.nrrd"`` -> ``"_image.nrrd"``. Used to recover a patient_id
+    from a flat filename (``LUNG1-001_image.nrrd`` -> ``LUNG1-001``).
+    """
+    return glob_pattern.rsplit("*", 1)[-1] if "*" in glob_pattern else glob_pattern
+
+
 @click.group()
 def convert():
     """Convert medical image formats (DICOM <-> NRRD)."""
@@ -294,9 +303,14 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
     """Build a manifest CSV by globbing image/mask pairs under a directory tree.
 
     \b
-    Each immediate subdirectory of --dataset-root is treated as one patient
-    (patient_id = subdirectory name). The first match of --image-glob and
-    --mask-glob within that patient directory is recorded.
+    Two layouts are supported:
+      1. Per-patient subdirectories — each immediate subdirectory of
+         --dataset-root is one patient (patient_id = subdirectory name);
+         the first match of --image-glob and --mask-glob inside it is used.
+      2. Flat layout (fallback when (1) yields nothing) — image/mask files
+         sit directly in --dataset-root with a shared per-patient prefix
+         (e.g. LUNG1-001_image.nrrd + LUNG1-001_mask.nrrd). The patient_id
+         is recovered by stripping each glob's trailing literal.
 
     \b
     Example:
@@ -328,6 +342,33 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
             )
         else:
             skipped.append(patient_dir.name)
+
+    # Fallback: flat layout with per-patient prefixes in the root itself
+    # (e.g. LUNG1-001_image.nrrd + LUNG1-001_mask.nrrd side by side). The
+    # per-patient-subdirectory walk above finds nothing there, so pair the
+    # flat files by stripping each glob's trailing literal to recover the
+    # patient_id.
+    if not rows:
+        img_suffix = _glob_suffix(image_glob)
+        msk_suffix = _glob_suffix(mask_glob)
+        flat_skipped = []
+        for img in sorted(root.glob(image_glob)):
+            if not img.is_file():
+                continue
+            pid = img.name[: -len(img_suffix)] if img_suffix and img.name.endswith(img_suffix) else img.stem
+            msk = root / f"{pid}{msk_suffix}"
+            if msk.is_file() and msk != img:
+                rows.append(
+                    {
+                        "patient_id": pid,
+                        "modality": modality,
+                        "image_path": str(img.resolve()),
+                        "mask_path": str(msk.resolve()),
+                    }
+                )
+            else:
+                flat_skipped.append(pid)
+        skipped = flat_skipped
 
     if not rows:
         click.echo(f"No image/mask pairs found under {root}", err=True)
