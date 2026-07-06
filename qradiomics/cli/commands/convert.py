@@ -357,7 +357,7 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
                 continue
             pid = img.name[: -len(img_suffix)] if img_suffix and img.name.endswith(img_suffix) else img.stem
             msk = root / f"{pid}{msk_suffix}"
-            if msk.exists():
+            if msk.is_file() and msk != img:
                 rows.append(
                     {
                         "patient_id": pid,
