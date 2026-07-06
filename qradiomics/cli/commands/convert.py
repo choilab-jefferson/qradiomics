@@ -233,7 +233,8 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
                 err=True,
             )
         else:
-            click.echo(f"No --roi specified, using the only ROI '{target_roi}'")
+            # Single-ROI RTSTRUCTs are unambiguous; stay quiet by default.
+            pass
     elif target_roi not in roi_names:
         # Case-insensitive fallback — RTSTRUCT ROI names are inconsistently cased
         # across institutions (e.g., "Heart" vs "heart" vs "HEART").
