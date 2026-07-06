@@ -11,6 +11,7 @@ import csv
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from uuid import uuid4
 
@@ -202,11 +203,29 @@ def extract(manifest, pattern, output, bin_width, jobs):
             # Multi-process — order is non-deterministic but the output CSV
             # contains one row per patient, identified by patient_id.
             done = 0
+            pool_broke = False
             with ProcessPoolExecutor(max_workers=jobs) as ex:
                 futs = {ex.submit(_process_one, w): w[0] for w in work}
                 for fut in as_completed(futs):
                     done += 1
-                    pid, feats, err = fut.result()
+                    label = futs[fut]
+                    # A worker can be killed mid-extraction (commonly the OS OOM
+                    # killer on a large volume). That poisons the whole pool:
+                    # this future and every still-pending one raise
+                    # BrokenProcessPool. Catch it per-future so the patients that
+                    # already streamed to features.csv are kept and reported,
+                    # instead of the whole command dying with a traceback.
+                    try:
+                        pid, feats, err = fut.result()
+                    except BrokenProcessPool:
+                        pool_broke = True
+                        pid, feats, err = (
+                            label, None,
+                            "worker process died (likely out of memory) — "
+                            "re-run with fewer --jobs (e.g. -j 1)",
+                        )
+                    except Exception as e:  # pragma: no cover - defensive
+                        pid, feats, err = label, None, f"worker error: {e}"
                     _emit(pid, feats, err)
                     if feats:
                         print(
@@ -216,6 +235,13 @@ def extract(manifest, pattern, output, bin_width, jobs):
                     else:
                         print(f"  extract [{done}/{total}] {pid} FAILED: {err}", flush=True)
                     sys.stdout.flush()
+            if pool_broke:
+                click.echo(
+                    "\nOne or more worker processes were killed (out of memory?). "
+                    "The patients that finished were saved; re-run with -j 1 to "
+                    "extract the rest.",
+                    err=True,
+                )
 
     status = "extracted" if n_ok > 0 else "error"
     click.echo(
