@@ -128,6 +128,15 @@ def extract(manifest, pattern, output, bin_width, jobs):
             f"Using pattern '{pattern}': image_types={extraction_settings['image_types']}, "
             f"feature_classes={list(fx.feature_classes)}"
         )
+    else:
+        # No pattern => enableAllImageTypes + enableAllFeatures (~1400 features
+        # incl. wavelet-*/log-sigma-*/square*/...). Make it explicit so callers
+        # don't assume an "original_"-only default (a common downstream bug).
+        click.echo(
+            "No --pattern given: enabling ALL image types and feature classes "
+            "(~1400 features, not just 'original_*'). Pass -p for a curated set.",
+            err=True,
+        )
 
     if bin_width is not None:
         extraction_settings["binWidth"] = bin_width
