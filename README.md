@@ -35,6 +35,20 @@ Env knobs accepted by the script: `QR_REPO_URL`, `QR_REPO_DIR`,
 `QR_BRANCH`, `QR_PYTHON`, `QR_VENV` (set to `-` to skip the venv),
 `QR_SKIP_SMOKE=1` to skip pytest.
 
+**Plain `pip` install (e.g. Colab):**
+
+```bash
+pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
+pip install qradiomics
+```
+
+Install pyradiomics **first**. `pip install qradiomics` on its own fails to
+resolve its `pyradiomics>=3.1.0` requirement: pyradiomics ships no PyPI wheel
+for Python 3.10+ and its 3.1.0 sdist has broken metadata (declares `3.0.1a1`),
+so pip discards it. This is a pyradiomics packaging limitation, not a
+qradiomics one — installing pyradiomics from its upstream git first gives pip a
+build that satisfies the requirement.
+
 ---
 
 > **Active successor for three earlier Choi Lab radiomics codebases.** The
