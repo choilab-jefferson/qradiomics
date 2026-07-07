@@ -3,7 +3,7 @@
 from .extractor import RadiomicsExtractor, get_radiomics_extractor
 from .pattern_loader import PatternLoader, PatternTemplate
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 __all__ = [
     "PatternLoader",
     "PatternTemplate",

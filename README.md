@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.9.1-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
+[![Version](https://img.shields.io/badge/version-0.9.2-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
 
 ## Kick-off
 

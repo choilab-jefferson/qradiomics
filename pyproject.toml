@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qradiomics"
-version = "0.9.1"
+version = "0.9.2"
 description = "Radiomics research CLI — extract, merge, analyze in one Unix-style pipeline."
 readme = "README.md"
 license = {text = "MIT"}
