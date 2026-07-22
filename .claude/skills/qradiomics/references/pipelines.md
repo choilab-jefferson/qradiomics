@@ -15,16 +15,19 @@ the public-dataset loader contract — use only the TCIA/Zenodo/GitHub sources i
 
 ## Feature-extraction patterns
 
-Patterns are named PyRadiomics setting bundles (`qr extract -p <id>`). They live in
-`qradiomics/data/pyradiomics/*.yaml` with higher-level templates in
-`qradiomics/data/templates/*.yaml`. List them with `qr pattern list`.
+Patterns are named setting bundles you pass as `qr extract -p <id>`. The registered ids
+come from `qradiomics/data/templates/*.yaml` (`qr pattern list`), which reference the raw
+PyRadiomics YAMLs in `qradiomics/data/pyradiomics/*.yaml`.
 
-| Pattern id | Use |
+| Pattern id (`-p`) | Use |
 |---|---|
-| `ct-default` | Full 1409-feature CT extraction (the usual default) |
-| `ct-original-only` | Original image only, no wavelet/LoG filters (faster) |
-| `nsclc-ct` | NSCLC CT survival tuning |
-| `pet-default` | PET/SUV extraction |
+| `ct-default` | Full ~1409-feature CT extraction (the usual default) |
+| `nsclc-survival` | NSCLC CT survival tuning (GTV) |
+| `survival-analysis` | Generic time-to-event radiomics |
+| `standard-radiomics` | General classification/regression |
+
+Underlying raw params files (not `-p` ids — pass as `params_file` in Python): `ct_default`,
+`pet_default` (PET/SUV), `nsclc_ct`, `ct_original_only` (Original only, ~110 feats, ~10× faster).
 
 ## Workflow templates
 

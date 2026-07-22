@@ -29,11 +29,33 @@ Read this file first. Pull in a reference file only when the task lands in it:
 
 - `references/cli.md` — every `qr` command group, its options, and copy-paste recipes.
 - `references/python-api.md` — the atomic core + `qradiomics.shape` Python API.
-- `references/pipelines.md` — LIDC-IDRI/LUNGx reproducibility scripts, patterns, workflow templates.
+- `references/workflows.md` — **authoring workflows & pipelines**: the plan data model,
+  editing/scaffolding/running, and building a deployable `pipelines/` bundle. Read this
+  whenever the task is "wire these steps together" / "make a pipeline" / "run a cohort".
+- `references/testing.md` — validating your work: offline phantom smoke, IBSI reference
+  check, and real end-to-end runs on **TCIA public data**.
+- `references/pipelines.md` — the shipped LIDC-IDRI/LUNGx reproducibility scripts,
+  feature-extraction patterns, and workflow templates.
 
 Before doing anything substantial, skim `AGENTS.md` and `README.md` at the repo
 root — they are the source of truth and may have moved past this skill. `qr info`
 prints the installed version; `reports/reproducibility.md` holds the paper protocol.
+
+## Everything `qr` can do (capability map)
+
+| Stage | Commands | What it does |
+|---|---|---|
+| **data** | `tcia collections\|series\|download\|clinical`, `pacs …`, `lidc convert\|convert-cohort`, `convert manifest-from-dir`, `anonymize` | Get cohorts (TCIA public / PACS network / LIDC XML), strip PHI, build the manifest CSV |
+| **image** | `convert dicom-series`, `convert rtstruct`, `convert fix-preamble`, `preprocess`, `register`, `hu-correct` | DICOM→NRRD, RTSTRUCT→label, resample/normalize, register moving↔fixed, cross-scanner HU harmonization |
+| **features** | `extract` (PyRadiomics ~1409), `shape extract` (AHSN 2014 + spiculation 2021), `delta` (longitudinal Δ/trend), `pattern list\|search` | Turn image+mask pairs into feature CSVs |
+| **modeling** | `results merge`, `analyze survival\|classify\|importance`, `ml train\|predict\|evaluate` | Join clinical, fit Cox / classifiers, leakage-safe CV models |
+| **assembly** | `workflow templates\|plan\|show\|scaffold\|run` | Chain all of the above into a runnable, parallel, cacheable pipeline |
+| **config** | `config …`, `info` | CLI config, PACS profiles, version |
+
+Full options live in `references/cli.md`. The `qradiomics.verification` module
+(`compare_feature_dicts`, `compare_image_pair`, `run_ab_sweep`) backs A/B feature and
+image-parity checks; `qradiomics.data_model` (`Cohort`/`Patient`/`Study`/`ROI`) is the
+typed in-memory model behind cohort handling.
 
 ## Non-negotiables (read before you touch anything)
 
@@ -92,23 +114,48 @@ qr ml predict  -i features.csv --model m.pkl --task survival -o pred.csv
 qr ml evaluate -i analysis_ready.csv --model m.pkl --task survival --outcome OS_event --report ev.json
 ```
 
-Workflow assembly instantiates that whole chain from one template:
-
-```bash
-qr workflow templates                                            # list templates
-qr workflow plan -t dicom_to_ml -d <cohort> -c clinical.csv -o plan.json
-qr workflow scaffold -p plan.json -e nextflow -o pipeline.nf
-qr workflow run plan.json --executor nextflow                    # default; inline = small-cohort fallback
-```
-
-Other groups: `qr pattern list|search` (feature-extraction patterns), `qr tcia`
-(public downloads), `qr pacs` (DICOM networking), `qr lidc convert|convert-cohort`
-(LIDC XML → NRRD), `qr preprocess`, `qr register`, `qr hu-correct`, `qr anonymize`,
-`qr config`. Full options and recipes are in `references/cli.md`.
-
 **The manifest CSV is the spine.** Almost every extraction command reads a manifest
 with columns `patient_id, modality, image_path, mask_path`. When something upstream
 of `qr extract` needs wiring, you are almost always producing or fixing a manifest.
+
+Patterns (`qr extract -p <id>`) select the feature set. `qr pattern list` shows the
+real ids: `ct-default`, `nsclc-survival`, `survival-analysis`, `standard-radiomics`.
+`ct-default` yields ~1409 features; omitting `-p` also enables all image types/features.
+
+## Building workflows & pipelines (the main event)
+
+Don't hand-chain shell for anything you'll rerun — assemble a **workflow plan** and let
+`qr` scaffold and parallelize it. A plan is pure JSON/YAML data (a list of `qr` steps
+with `stage`, `args`, `inputs/outputs`, and a `per_patient` flag), so you generate the
+closest template, edit the data, dry-run it, then run or scaffold it:
+
+```bash
+qr workflow templates                                        # nrrd_survival | dicom_survival | dicom_to_ml | tcia_to_ml
+qr workflow plan -t dicom_to_ml -d <cohort> -c clinical.csv -o plan.json
+qr workflow show plan.json                                   # inspect the steps
+# ... edit plan.json: swap vars.pattern, add a `shape extract` step, switch analyze→classify ...
+qr workflow run plan.json --executor inline --dry-run        # print exact commands, run nothing
+qr workflow run plan.json --executor nextflow                # default: per-patient parallel + cache + HPC
+qr workflow scaffold -p plan.json -e nextflow -o main.nf     # or commit a standalone Nextflow/shell file
+```
+
+Executors: **nextflow** (default, production), **prefect** (secondary), **inline**
+(small-cohort, in-process). To ship a cohort as a deployable bundle, mirror
+`pipelines/lung1/` (`plan.json` + `main.nf` + `nextflow.config` + `deploy.sh`). The full
+data model, editing patterns, and pipeline-directory recipe are in `references/workflows.md`.
+
+## Test what you build
+
+Validate cheaply before spending TCIA download time. Full guide in `references/testing.md`:
+
+- **Offline, no data:** `python -m pytest tests/ -q` (shape/atomic tests use synthetic
+  phantoms). Smoke the feature path on a generated sphere mask with `qr extract`.
+- **Numerical parity:** `examples/ibsi_validation.sh` diffs features against IBSI
+  reference values.
+- **Real end-to-end:** pull a capped slice of a TCIA collection
+  (`qr tcia download … --max-series 4`) and run the full chain, or
+  `qr workflow plan -t tcia_to_ml -C "<collection>" …` then run it. `pipelines/*/deploy.sh`
+  are the ready-made TCIA→model bundles.
 
 ## Python core
 

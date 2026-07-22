@@ -59,12 +59,15 @@ LIDC-IDRI-0001,CT,/data/nrrd/LIDC-IDRI-0001_CT.nrrd,/data/labels/LIDC-IDRI-0001_
 Read a manifest, run PyRadiomics per patient, stream results to `features.csv`
 (~1409 features/row). Output is observable in real time (tail / `pipelines/monitor.py`).
 ```bash
-qr extract -m manifest.csv -p ct-default -o features.csv [--jobs N]
+qr extract -m manifest.csv -p ct-default -o features.csv [--jobs N] [--bin-width 25]
 ```
-- `-p/--pattern` picks the extraction settings (see [pattern](#pattern)). `ct-default`
-  = full 1409-feature CT set; `pet-default`, `nsclc-ct`, `ct-original-only` also ship.
+- `-p/--pattern` picks the extraction settings (an id from `qr pattern list`, see
+  [pattern](#pattern)). `ct-default` → ~1409 features. **Omit `-p`** to enable ALL image
+  types + ALL feature classes (also ~1409). `--bin-width` overrides the pattern's binWidth.
 - `--jobs N` runs N worker processes, one patient each. A crashing worker is isolated
   (see `tests/test_extract_worker_crash.py`) — the run continues and logs the failure.
+- Verified: on a synthetic sphere phantom, `qr extract -p ct-default` prints
+  `ok (1409 features)` and writes a 1410-column CSV (`patient_id` + 1409 features).
 
 ## shape
 
@@ -125,14 +128,26 @@ qr ml evaluate -i analysis_ready.csv --model model.pkl --task {survival|classify
 
 ## pattern
 
-Feature-extraction patterns are named PyRadiomics setting bundles (YAML under
-`qradiomics/data/pyradiomics/` + templates in `qradiomics/data/templates/`).
+Feature-extraction patterns are named setting bundles loaded from
+`qradiomics/data/templates/*.yaml`, which reference the raw PyRadiomics YAMLs in
+`qradiomics/data/pyradiomics/` (`ct_default`, `pet_default`, `nsclc_ct`,
+`ct_original_only`).
 ```bash
 qr pattern list             # all bundled patterns with id / name / tags
 qr pattern search <query>   # search by keyword
 ```
-Common ids: `ct-default` (1409 CT features), `pet-default`, `nsclc-ct`,
-`ct-original-only`. Pass the id to `qr extract -p`.
+The registered ids you pass to `qr extract -p` (verified from `qr pattern list`):
+
+| id | name | tags |
+|---|---|---|
+| `ct-default` | CT Default Radiomics | ct, general, multi-type |
+| `nsclc-survival` | NSCLC CT Survival Radiomics | nsclc, lung, ct, survival, gtv |
+| `survival-analysis` | Radiomics Survival Analysis | survival, cox, oncology |
+| `standard-radiomics` | Standard Radiomics Analysis | general, classification |
+
+`ct_original_only.yaml` (Original image only, ~110 features, ~10× faster) is a raw
+PyRadiomics params file for cohort-scale screening — pass it as a `params_file` to
+`extract_features()` rather than as a `-p` id.
 
 ## workflow
 
