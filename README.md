@@ -29,7 +29,11 @@ curl -sSL https://raw.githubusercontent.com/choilab-jefferson/qradiomics/main/sc
 >    layout, don'ts, citations). Do **not** log PHI, do **not** push
 >    to remotes, do **not** invent new public dataset URLs — use only
 >    the ones documented in AGENTS.md.
-> 3. Ask the user what they want to build.
+> 3. If your agent supports skills (e.g. Claude Code), the repo ships one at
+>    `.claude/skills/qradiomics/` — it auto-triggers here and maps the whole
+>    `qr` CLI, the Python API, workflow/pipeline authoring, and how to test on
+>    TCIA data. See [AI-agent skill](#ai-agent-skill-claude-code) below.
+> 4. Ask the user what they want to build.
 
 Env knobs accepted by the script: `QR_REPO_URL`, `QR_REPO_DIR`,
 `QR_BRANCH`, `QR_PYTHON`, `QR_VENV` (set to `-` to skip the venv),
@@ -449,6 +453,34 @@ from qradiomics.shape import (
 See `tests/shape/` for end-to-end usage on analytic shapes
 (sphere / spiked-sphere / phantoms).
 
+## AI-Agent Skill (Claude Code)
+
+The repo ships a first-class **agent skill** at `.claude/skills/qradiomics/`. In
+Claude Code (and any tool that reads `.claude/skills/`) it auto-triggers whenever you
+work in this repository — even when a request only names a piece ("extract features",
+"convert this RTSTRUCT", "fit a Cox model", "build a pipeline for this cohort") without
+naming qradiomics. It exists so an agent uses the `qr` CLI and the atomic API the way
+they're meant to be used, and honors the clinical-data safeguards, instead of guessing.
+
+**What it gives the agent** (progressive disclosure — a short `SKILL.md` plus focused
+references it opens only when the task lands in them):
+
+| File | Covers |
+|---|---|
+| `SKILL.md` | The `data → image → features → modeling` flow, a stage-by-stage map of every `qr` command, the non-negotiables (no PHI in logs, no `git add -A`, no push without confirmation), and quickstarts for workflows and testing |
+| `references/cli.md` | Every `qr` command group, its options, and copy-paste recipes |
+| `references/python-api.md` | `qradiomics.atomic`, `qradiomics.io`, `qradiomics.shape` with real signatures |
+| `references/workflows.md` | Authoring workflows & pipelines: the `WorkflowPlan` data model, editing/scaffolding/running, building a deployable `pipelines/` bundle |
+| `references/testing.md` | Validating work: offline phantom smoke, IBSI reference parity, and end-to-end runs on TCIA public data |
+| `references/pipelines.md` | The shipped LIDC-IDRI/LUNGx reproducibility scripts, patterns, and workflow templates |
+
+**Using it.** In Claude Code, just open this repo and start working — no setup. To use
+it elsewhere, point your agent at `.claude/skills/qradiomics/SKILL.md`, or package it
+with Anthropic's `skill-creator` (`python -m scripts.package_skill .claude/skills/qradiomics`).
+
+Full skill-based usage guide, examples, and screenshots live in the
+[project wiki](https://github.com/choilab-jefferson/qradiomics/wiki).
+
 ## Repository Layout
 
 ```
@@ -475,6 +507,7 @@ qradiomics/
     └── schema/              # pattern-template JSON schema
 
 tests/                       # pytest: analyze + results.merge (19 tests)
+.claude/skills/qradiomics/   # AI-agent skill (SKILL.md + references/) — see above
 LICENSE                      # MIT
 pyproject.toml
 ```
