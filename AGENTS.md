@@ -10,6 +10,13 @@
 
 ## 1. What an agent should read first
 
+If your tooling supports skills (Claude Code and compatible agents), the bundled skill
+at `.claude/skills/qradiomics/` auto-triggers in this repo and is the fastest orientation
+— it distills this file, the CLI, the Python API, workflow/pipeline authoring, and the
+TCIA testing paths into progressive-disclosure references. It is a navigation aid, not a
+replacement: the files below remain the source of truth, and this AGENTS.md wins on any
+conflict.
+
 In strict order:
 
 1. `README.md` — repository overview, install commands, end-to-end example.
