@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -64,6 +65,18 @@ def compare_feature_dicts(
         except (TypeError, ValueError):
             if str(a) != str(b):
                 diffs.append((k, 0.0, 0.0, float("inf"), float("inf")))
+            continue
+        if af == bf:
+            continue  # exact match, including ±inf
+        a_nan, b_nan = math.isnan(af), math.isnan(bf)
+        if a_nan or b_nan:
+            # NaN never compares > tolerance, so the plain `abs_err > tol` check
+            # below would silently treat a NaN-vs-finite mismatch as parity —
+            # exactly the regression this A/B harness exists to catch. Flag it.
+            # (Both-NaN falls here too and is correctly treated as equal, since
+            # NaN != NaN means it slips past the `af == bf` short-circuit.)
+            if a_nan != b_nan:
+                diffs.append((k, af, bf, float("inf"), float("inf")))
             continue
         abs_err = abs(af - bf)
         rel_err = abs_err / max(abs(bf), 1e-300)
