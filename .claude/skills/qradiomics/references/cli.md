@@ -68,6 +68,10 @@ qr extract -m manifest.csv -p ct-default -o features.csv [--jobs N] [--bin-width
   (see `tests/test_extract_worker_crash.py`) — the run continues and logs the failure.
 - Verified: on a synthetic sphere phantom, `qr extract -p ct-default` prints
   `ok (1409 features)` and writes a 1410-column CSV (`patient_id` + 1409 features).
+- `--engine <pyradiomics,pysera,rtools|all>` (comma-separated, default
+  `pyradiomics`) runs one or more extraction engines in a single pass, e.g.
+  `qr extract -m manifest.csv -o features.csv --engine pyradiomics,pysera,rtools`.
+  See `qr extract --help`.
 
 ## shape
 
@@ -125,6 +129,30 @@ qr ml evaluate -i analysis_ready.csv --model model.pkl --task {survival|classify
 ```
 - `--corr-threshold` drops one of each highly-correlated feature pair; `--top-features`
   caps the retained set. Both feed the leakage-safe selection.
+
+## bench
+
+Multi-model classification benchmark: nested CV over several classifiers,
+optional HPO, optional external-test refit/eval, HTML + CSV report.
+```bash
+qr bench -i features.csv --outcome event --models LR,RF,XGB,LGBM,FLAML --cv 10
+qr bench -i features.csv --outcome event --all-models --hpo optuna
+qr bench -i features.csv --outcome event --external-test ext.csv \
+  [--tpot-repeats 5] [--calibrate-threshold]
+```
+- `-m/--models` (default `LR,SVM,ExtraTrees,RF,GBM,MLP,XGB,LGBM`); `--all-models`
+  adds `FLAML`. `TPOT` is opt-in only (`--models TPOT`, never included by
+  `--all-models`) — its genetic search isn't reproducible run-to-run, so
+  `--tpot-repeats` (default 5) refits it independently and reports mean/std.
+- `--cv`/`--inner-cv` (default 10/5) set outer/inner fold counts; `--hpo grid|optuna`
+  (`--optuna-trials`, default 30) picks the search strategy; `--seed` (default 42).
+- `--external-test <csv>` refits the CV-selected models on the full training set
+  and scores them on a held-out CSV; `--calibrate-threshold` reports
+  accuracy/sensitivity/specificity at a Youden's-J threshold instead of 0.5.
+- `--output-dir` (default `results/bench`) gets `bench_cv_results.csv`,
+  `bench_external_results.csv` (if `--external-test`), and an HTML report.
+- `qr ml benchmark` is the recommended canonical form of this same engine (adds
+  a correlation pre-filter); `qr bench` is a permanent backward-compatible alias.
 
 ## pattern
 

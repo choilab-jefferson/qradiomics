@@ -338,7 +338,7 @@ gluing required.
 | `qr preprocess`             | image      | bbox crop + isotropic resample per (image, mask) row          |
 | `qr register`               | image      | Rigid Mattes-MI/LBFGSB moving→fixed (Scenario C mask transfer)|
 | `qr hu-correct`             | image      | Histogram-match CBCT to a reference CT                        |
-| `qr extract`                | features   | PyRadiomics → features.csv (manifest + pattern)               |
+| `qr extract`                | features   | Multi-engine extraction (PyRadiomics/PySERA/rtools) → features.csv |
 | `qr shape extract`          | features   | AHSN + spiculation shape descriptors                          |
 | `qr delta`                  | features   | DeltaPair (A - B) + trend slope per patient across timepoints |
 | `qr results merge`          | features   | features.csv + clinical.csv → analysis_ready.csv              |
@@ -348,6 +348,7 @@ gluing required.
 | `qr ml train`               | modeling   | CV Cox / logistic + leakage-safe corr/univariate selection    |
 | `qr ml predict`             | modeling   | Apply a trained model to new features                         |
 | `qr ml evaluate`            | modeling   | Hold-out evaluation report (c-index / AUC)                    |
+| `qr bench`                  | modeling   | Multi-model classification benchmark (LR/SVM/ExtraTrees/RF/GBM/MLP/XGB/LGBM/FLAML/TPOT), nested CV + HPO + external test |
 | `qr workflow plan`          | assembly   | Generate a multi-step plan from a template                    |
 | `qr workflow show`          | assembly   | Inspect a plan's steps and variables                          |
 | `qr workflow scaffold`      | assembly   | Render a plan as shell / nextflow / prefect                   |
