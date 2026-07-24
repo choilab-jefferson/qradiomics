@@ -188,7 +188,10 @@ def compute_suv_factor(ds, latest_ds=None) -> Tuple[float, bool]:
         half_life = float(ri.RadionuclideHalfLife)
         injected_dose = float(ri.RadionuclideTotalDose)
         diff = scantime - injection_time
-        diff_s = diff.seconds + diff.microseconds / 1e6
+        # total_seconds() (not .seconds, which drops the .days component and is
+        # clamped to 0..86399) so an injection→scan interval that crosses
+        # midnight yields the true elapsed seconds instead of a ~86400 s jump.
+        diff_s = diff.total_seconds()
         decay = float(np.exp(-np.log(2) * diff_s / half_life))
         decayed_dose = injected_dose * decay
         if decayed_dose <= 0:
