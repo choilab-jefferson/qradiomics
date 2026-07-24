@@ -85,35 +85,47 @@ def extract(manifest, output, ahsn, spiculation, jobs):
 
     out_path = Path(output); out_path.parent.mkdir(parents=True, exist_ok=True)
     n_ok = 0; n_fail = 0
-    with open(out_path, "w", newline="") as fout:
-        writer = None
-        def _emit(pid, row, err):
-            nonlocal writer, n_ok, n_fail
-            if row is None:
-                n_fail += 1; return
-            if writer is None:
-                writer = csv.DictWriter(fout, fieldnames=list(row.keys()))
-                writer.writeheader()
-            writer.writerow(row); fout.flush(); n_ok += 1
+    results: list[dict] = []
 
-        if jobs <= 1:
-            for i, w in enumerate(work, 1):
-                pid = w[0]
-                print(f"  shape [{i}/{total}] {pid} ...", flush=True)
-                pid, row, err = _shape_one(w)
-                _emit(pid, row, err)
-                print(f"  shape [{i}/{total}] {pid} {'ok' if row else 'FAIL: ' + (err or '')}",
-                      flush=True)
-        else:
-            done = 0
-            with ProcessPoolExecutor(max_workers=jobs) as ex:
-                futs = {ex.submit(_shape_one, w): w[0] for w in work}
-                for fut in as_completed(futs):
-                    done += 1
-                    pid, row, err = fut.result()
-                    _emit(pid, row, err)
-                    print(f"  shape [{done}/{total}] {pid} "
-                          f"{'ok' if row else 'FAIL: ' + (err or '')}", flush=True)
-                    sys.stdout.flush()
+    def _collect(pid, row, err):
+        nonlocal n_ok, n_fail
+        if row is None:
+            n_fail += 1; return
+        results.append(row); n_ok += 1
+
+    if jobs <= 1:
+        for i, w in enumerate(work, 1):
+            pid = w[0]
+            print(f"  shape [{i}/{total}] {pid} ...", flush=True)
+            pid, row, err = _shape_one(w)
+            _collect(pid, row, err)
+            print(f"  shape [{i}/{total}] {pid} {'ok' if row else 'FAIL: ' + (err or '')}",
+                  flush=True)
+    else:
+        done = 0
+        with ProcessPoolExecutor(max_workers=jobs) as ex:
+            futs = {ex.submit(_shape_one, w): w[0] for w in work}
+            for fut in as_completed(futs):
+                done += 1
+                pid, row, err = fut.result()
+                _collect(pid, row, err)
+                print(f"  shape [{done}/{total}] {pid} "
+                      f"{'ok' if row else 'FAIL: ' + (err or '')}", flush=True)
+                sys.stdout.flush()
+
+    # Write with a UNION header across all rows. A per-patient spiculation
+    # failure emits a `spic_error` column instead of the `spic_*` features, so a
+    # first-patient-only header would make csv.DictWriter raise (default
+    # extrasaction="raise") or silently misalign columns. Union + restval="" is
+    # robust to heterogeneous key sets.
+    if results:
+        from qradiomics.extractor import union_fieldnames
+        fieldnames = union_fieldnames(results)
+        with open(out_path, "w", newline="") as fout:
+            writer = csv.DictWriter(fout, fieldnames=fieldnames, restval="")
+            writer.writeheader()
+            writer.writerows(results)
+    else:
+        out_path.write_text("patient_id\n")
 
     click.echo(f"\nShape: {n_ok} ok, {n_fail} failed → {out_path}")
