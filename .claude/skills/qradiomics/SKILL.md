@@ -48,7 +48,7 @@ prints the installed version; `reports/reproducibility.md` holds the paper proto
 | **data** | `tcia collections\|series\|download\|clinical`, `pacs …`, `lidc convert\|convert-cohort`, `convert manifest-from-dir`, `anonymize` | Get cohorts (TCIA public / PACS network / LIDC XML), strip PHI, build the manifest CSV |
 | **image** | `convert dicom-series`, `convert rtstruct`, `convert fix-preamble`, `preprocess`, `register`, `hu-correct` | DICOM→NRRD, RTSTRUCT→label, resample/normalize, register moving↔fixed, cross-scanner HU harmonization |
 | **features** | `extract` (PyRadiomics ~1409), `shape extract` (AHSN 2014 + spiculation 2021), `delta` (longitudinal Δ/trend), `pattern list\|search` | Turn image+mask pairs into feature CSVs |
-| **modeling** | `results merge`, `analyze survival\|classify\|importance`, `ml train\|predict\|evaluate` | Join clinical, fit Cox / classifiers, leakage-safe CV models |
+| **modeling** | `results merge`, `analyze survival\|classify\|importance`, `ml train\|predict\|evaluate`, `bench` | Join clinical, fit Cox / classifiers, leakage-safe CV models, multi-model benchmark |
 | **assembly** | `workflow templates\|plan\|show\|scaffold\|run` | Chain all of the above into a runnable, parallel, cacheable pipeline |
 | **config** | `config …`, `info` | CLI config, PACS profiles, version |
 
@@ -56,6 +56,10 @@ Full options live in `references/cli.md`. The `qradiomics.verification` module
 (`compare_feature_dicts`, `compare_image_pair`, `run_ab_sweep`) backs A/B feature and
 image-parity checks; `qradiomics.data_model` (`Cohort`/`Patient`/`Study`/`ROI`) is the
 typed in-memory model behind cohort handling.
+
+`qr extract` also supports multi-engine extraction —
+`--engine pyradiomics,pysera,rtools` (or `--engine all`). See
+`references/cli.md` and `qr extract --help`.
 
 ## Non-negotiables (read before you touch anything)
 
