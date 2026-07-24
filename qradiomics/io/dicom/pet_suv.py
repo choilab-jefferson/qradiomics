@@ -103,6 +103,16 @@ def _geometry(rows):
     row_dir = np.array(iop[:3])
     col_dir = np.array(iop[3:])
     slice_dir = np.cross(row_dir, col_dir)
+    # The cross product gives the mathematical image-plane normal, but for
+    # some patient positions (e.g. HFP) it points opposite to the stacking
+    # direction (ascending z-sort). Flip it so the direction matrix agrees
+    # with the physical first→last slice vector; otherwise the image is
+    # mirrored along the slice axis in downstream viewers.
+    if len(rows) > 1:
+        pos_first = np.array([float(v) for v in rows[0][0].ImagePositionPatient])
+        pos_last = np.array([float(v) for v in rows[-1][0].ImagePositionPatient])
+        if np.dot(slice_dir, pos_last - pos_first) < 0:
+            slice_dir = -slice_dir
     direction = (
         row_dir[0], col_dir[0], slice_dir[0],
         row_dir[1], col_dir[1], slice_dir[1],

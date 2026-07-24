@@ -5,7 +5,7 @@ import math
 import pytest
 from pydicom.dataset import Dataset
 
-from qradiomics.io.dicom.pet_suv import compute_suv_factor, _parse_time
+from qradiomics.io.dicom.pet_suv import compute_suv_factor, _parse_time, _geometry
 
 
 def _radiopharm(injection_time="110000", half_life=6588.0, dose=370_000_000.0):
@@ -89,6 +89,44 @@ class TestSUVBranches:
         ds.AcquisitionTime = "120000"
         _, est = compute_suv_factor(ds)
         assert est is True
+
+
+def _make_ds(iop, ipp, pixel_spacing=(1.0, 1.0)):
+    ds = Dataset()
+    ds.ImageOrientationPatient = [str(v) for v in iop]
+    ds.ImagePositionPatient = [str(v) for v in ipp]
+    ds.PixelSpacing = [str(pixel_spacing[0]), str(pixel_spacing[1])]
+    return ds
+
+
+class TestGeometrySliceDirection:
+    """slice_dir in _geometry must agree with the physical stacking order."""
+
+    def test_hfs_normal_no_flip(self):
+        # HFS: row=[1,0,0], col=[0,1,0] → cross=[0,0,1] (same as ascending z)
+        iop = [1, 0, 0, 0, 1, 0]
+        rows = [
+            (_make_ds(iop, [0, 0, -50]), -50.0),
+            (_make_ds(iop, [0, 0,   0]),   0.0),
+            (_make_ds(iop, [0, 0,  50]),  50.0),
+        ]
+        _, _, direction = _geometry(rows)
+        # Third column of the direction matrix is slice_dir
+        slice_dir_z = direction[8]  # direction[2], direction[5], direction[8]
+        assert slice_dir_z > 0, "HFS: slice_dir should point toward +z (head)"
+
+    def test_hfp_cross_product_flipped(self):
+        # HFP: row=[1,0,0], col=[0,-1,0] → cross=[0,0,-1] but stacking is ascending z
+        # The fix should negate slice_dir so it points toward +z.
+        iop = [1, 0, 0, 0, -1, 0]
+        rows = [
+            (_make_ds(iop, [0, 0, -50]), -50.0),
+            (_make_ds(iop, [0, 0,   0]),   0.0),
+            (_make_ds(iop, [0, 0,  50]),  50.0),
+        ]
+        _, _, direction = _geometry(rows)
+        slice_dir_z = direction[8]
+        assert slice_dir_z > 0, "HFP: slice_dir must be flipped to agree with +z stacking"
 
 
 class TestTimeParser:

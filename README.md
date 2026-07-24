@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.9.2-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
+[![Version](https://img.shields.io/badge/version-0.9.3-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
 
 ## Kick-off
 
@@ -81,6 +81,7 @@ whole chain:
 # Atomic tasks
 qr convert dicom-series / rtstruct / manifest-from-dir
 qr extract        -m manifest.csv -p <pattern> -o features.csv
+qr extract        -m manifest.csv -o features.csv --engine pyradiomics,pysera,rtools  # multi-engine
 qr results merge  -f features.csv -c clinical.csv -o analysis_ready.csv
 qr analyze {survival,classify,importance} -i analysis_ready.csv ...
 qr ml {train,predict,evaluate} ...
@@ -101,7 +102,7 @@ Click CLI built on PyRadiomics, scikit-learn, and lifelines:
 | Earlier project | Stack | Role | This repo |
 |---|---|---|---|
 | [taznux/lung-image-analysis](https://github.com/taznux/lung-image-analysis) | MATLAB · MIT | LIDC-IDRI nodule detection / segmentation / characterization | superseded |
-| [taznux/radiomics-tools](https://github.com/taznux/radiomics-tools) | C++/Python (ITK, Ruffus) · MIT | DICOM tools, GrowCut segmentation, feature extraction pipeline | superseded |
+| [taznux/radiomics-tools](https://github.com/taznux/radiomics-tools) | C++/Python (ITK, Ruffus) · MIT | DICOM tools, GrowCut segmentation, feature extraction pipeline | its feature extractor is wrapped as the `rtools` engine (`qr extract --engine rtools`); DICOM tools/GrowCut remain superseded |
 | [choilab-jefferson/LungCancerScreeningRadiomics](https://github.com/choilab-jefferson/LungCancerScreeningRadiomics) | MATLAB / Python · GPL-3.0 | LIDC + LUNGx end-to-end screening workflow with AutoML | superseded (this repo re-implements the open subset under MIT using PyRadiomics) |
 
 The AHSN shape descriptor pipeline (CMPB 2014) and the spiculation
@@ -114,8 +115,10 @@ will be released here after publication.
 ## Install
 
 ```bash
-pip install -e .            # core CLI + library
-pip install -e .[rtstruct]  # plus rt-utils for `qr convert rtstruct`
+pip install -e .             # core CLI + library
+pip install -e .[rtstruct]   # plus rt-utils for `qr convert rtstruct`
+pip install -e .[pysera]     # plus the PySERA extraction engine (`qr extract --engine pysera`)
+pip install -e .[pysera-deep]  # + torch/torchvision for PySERA's deep-feature extraction mode
 ```
 
 Python 3.11 or newer is required. PyRadiomics, SimpleITK, lifelines,

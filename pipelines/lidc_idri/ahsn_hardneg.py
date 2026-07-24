@@ -19,15 +19,19 @@ nodule + nonNodule annotations are present.
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.io.lidc import parse_lidc_xml, scan_lidc_dir
 from qradiomics.io.lidc.extract import _uid_to_z
 from qradiomics.shape import AHSNConfig, ahsn
@@ -141,28 +145,21 @@ def main() -> int:
     print(f"found {len(patients)} converted patients", file=sys.stderr)
 
     work = [(p.name, str(p), args.lidc_src, args.block_size) for p in patients]
-    all_rows = []
-    ok = fail = 0
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_process_one, w): w[0] for w in work}
-        for fut in as_completed(futs):
-            pid = futs[fut]
-            try: rows = fut.result()
-            except Exception as e:
-                fail += 1; print(f"  ✘ {pid}: {e}", file=sys.stderr); continue
-            n_pos = sum(1 for r in rows if r.get("label") == 1)
-            n_neg = sum(1 for r in rows if r.get("label") == 0)
-            if n_pos + n_neg: ok += 1
-            else: fail += 1
-            all_rows.extend(rows)
-            print(f"  ✓ {pid}: +{n_pos} / -{n_neg}", file=sys.stderr)
 
-    keys = sorted({k for r in all_rows for k in r.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader(); w.writerows(all_rows)
-    print(f"wrote {len(all_rows)} rows → {args.out}  ({ok} ok / {fail} fail)",
-          file=sys.stderr)
+    def _fmt(_pid, rows: list[dict]) -> str:
+        n_pos = sum(1 for r in rows if r.get("label") == 1)
+        n_neg = sum(1 for r in rows if r.get("label") == 0)
+        return f"+{n_pos} / -{n_neg}"
+
+    def _is_ok(rows: list[dict]) -> bool:
+        n_pos = sum(1 for r in rows if r.get("label") == 1)
+        n_neg = sum(1 for r in rows if r.get("label") == 0)
+        return (n_pos + n_neg) > 0
+
+    run_parallel_rows(
+        work, _process_one, args.jobs, args.out,
+        format_success=_fmt, is_ok=_is_ok,
+    )
     return 0
 
 

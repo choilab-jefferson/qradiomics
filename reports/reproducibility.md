@@ -312,5 +312,5 @@ If qradiomics-public is useful for your work, please cite the original papers an
 **Software**
 
 - **qradiomics-public** — Choi W. qradiomics: a Python radiomics toolkit (atomic core + LIDC / NSCLC reproducibility pipelines). [github.com/choilab-jefferson/qradiomics](https://github.com/choilab-jefferson/qradiomics).
-- **LungCancerScreeningRadiomics (LCSR)** — Choi W. MATLAB implementation of the Choi 2014 / 2021 pipelines. [github.com/choilab-jefferson/LungCancerScreeningRadiomics](https://github.com/choilab-jefferson/LungCancerScreeningRadiomics).
+- **LungCancerScreeningRadiomics (LCSR)** — Choi W. MATLAB implementation of the Choi 2014 / 2021 pipelines. [github.com/taznux/LungCancerScreeningRadiomics](https://github.com/taznux/LungCancerScreeningRadiomics).
 - **CIR / CIRDataset** — Choi W, Dahiya N, Nadeem S. Clinically-interpretable radiomics pipeline + annotated dataset. [github.com/choilab-jefferson/CIR](https://github.com/choilab-jefferson/CIR), [github.com/nadeemlab/CIR](https://github.com/nadeemlab/CIR), Zenodo doi:[10.5281/zenodo.6762573](https://doi.org/10.5281/zenodo.6762573).

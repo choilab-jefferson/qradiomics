@@ -19,16 +19,20 @@ This is a direct *port-validation* against the original MATLAB pipeline's output
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 from scipy.ndimage import label as cc_label
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.shape import spiculation_from_voxel
 
 
@@ -106,26 +110,18 @@ def main() -> int:
     if args.limit: work = work[: args.limit]
     print(f"{len(work)} nodules", file=sys.stderr)
 
-    rows = []
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_process_one, w): (w[0], w[1]) for w in work}
-        for fut in as_completed(futs):
-            pid, n = futs[fut]
-            try:
-                r = fut.result()
-                rows.append(r)
-                print(f"  ✓ {pid}#{n}: qr Na={r.get('qr_Na','?')} Nl={r.get('qr_Nl','?')} "
-                      f"Na_att={r.get('qr_Na_att','?')}  "
-                      f"lcsr Na={r.get('lcsr_Na','?')} Nl={r.get('lcsr_Nl','?')} "
-                      f"Na_att={r.get('lcsr_Na_att','?')}", file=sys.stderr)
-            except Exception as e:
-                print(f"  ✘ {pid}#{n}: {e}", file=sys.stderr)
+    def _fmt(key, rows: list[dict]) -> str:
+        r = rows[0] if rows else {}
+        return (f"qr Na={r.get('qr_Na', '?')} Nl={r.get('qr_Nl', '?')} "
+                f"Na_att={r.get('qr_Na_att', '?')}  "
+                f"lcsr Na={r.get('lcsr_Na', '?')} Nl={r.get('lcsr_Nl', '?')} "
+                f"Na_att={r.get('lcsr_Na_att', '?')}")
 
-    keys = sorted({k for r in rows for k in r.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader(); w.writerows(rows)
-    print(f"wrote {len(rows)} rows → {args.out}", file=sys.stderr)
+    run_parallel_rows(
+        work, _process_one, args.jobs, args.out,
+        key_fn=lambda w: f"{w[0]}#{w[1]}",
+        format_success=_fmt,
+    )
 
     # Spearman correlation between qradiomics and LCSR peak counts
     try:

@@ -104,9 +104,52 @@ def _aggregate_lidc(df: pd.DataFrame) -> pd.DataFrame:
     return g.reset_index(drop=True)
 
 
+def _brier_ece(y_true, prob, n_bins: int = 10) -> tuple[float, float]:
+    """Brier score + equal-width-bin Expected Calibration Error (C05)."""
+    y = np.asarray(y_true, dtype=float)
+    p = np.asarray(prob, dtype=float)
+    if len(y) == 0:
+        return float("nan"), float("nan")
+    brier = float(np.mean((p - y) ** 2))
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    n = len(y)
+    for i in range(n_bins):
+        hi_inclusive = i == n_bins - 1
+        m = (p >= bins[i]) & (p <= bins[i + 1] if hi_inclusive else p < bins[i + 1])
+        if m.sum() == 0:
+            continue
+        ece += (m.sum() / n) * abs(float(p[m].mean()) - float(y[m].mean()))
+    return brier, float(ece)
+
+
+def _auc_ci(y_true, prob, n_boot: int = 2000, seed: int = 42) -> tuple[float, float, float]:
+    """Point AUC + percentile bootstrap 95% CI on pooled predictions (C06)."""
+    y = np.asarray(y_true)
+    p = np.asarray(prob)
+    if len(y) == 0 or len(np.unique(y)) < 2:
+        return float("nan"), float("nan"), float("nan")
+    auc = float(roc_auc_score(y, p))
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    boots = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, n)
+        if len(np.unique(y[idx])) < 2:
+            continue
+        boots.append(roc_auc_score(y[idx], p[idx]))
+    if not boots:
+        return auc, float("nan"), float("nan")
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    return auc, float(lo), float(hi)
+
+
 def _cv_auc(X: pd.DataFrame, y: pd.Series, groups,
             n_splits: int = 5, top_k: int = 50, seed: int = 42,
-            classifier: str = "rf") -> tuple[float, float]:
+            classifier: str = "rf"):
+    """Patient-grouped (or stratified) CV. Returns mean/std AUC plus the
+    pooled out-of-fold (y, prob) so calibration (Brier/ECE) and a bootstrap
+    AUC CI can be computed on honest held-out predictions."""
     if groups is not None:
         kf = GroupKFold(n_splits=n_splits)
         splitter = kf.split(X, y, groups)
@@ -114,6 +157,8 @@ def _cv_auc(X: pd.DataFrame, y: pd.Series, groups,
         kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
         splitter = kf.split(X, y)
     aucs = []
+    oof_y: list[float] = []
+    oof_p: list[float] = []
     for tr, te in splitter:
         Xtr, Xte = X.iloc[tr], X.iloc[te]
         ytr, yte = y.iloc[tr], y.iloc[te]
@@ -140,7 +185,10 @@ def _cv_auc(X: pd.DataFrame, y: pd.Series, groups,
         clf.fit(sc.transform(Xtr), ytr)
         prob = clf.predict_proba(sc.transform(Xte))[:, 1]
         aucs.append(roc_auc_score(yte, prob))
-    return float(np.mean(aucs)), float(np.std(aucs))
+        oof_y.extend(np.asarray(yte, dtype=float).tolist())
+        oof_p.extend(np.asarray(prob, dtype=float).tolist())
+    return (float(np.mean(aucs)), float(np.std(aucs)),
+            np.asarray(oof_y), np.asarray(oof_p))
 
 
 def _external_auc(Xtr, ytr, Xte, yte, top_k=50, classifier="rf", seed=42,
@@ -205,7 +253,8 @@ def _external_auc(Xtr, ytr, Xte, yte, top_k=50, classifier="rf", seed=42,
         clf.fit(sc.transform(Xtr), ytr)
 
     prob = clf.predict_proba(sc.transform(Xte))[:, 1]
-    return float(roc_auc_score(yte, prob))
+    return (float(roc_auc_score(yte, prob)),
+            np.asarray(yte, dtype=float), np.asarray(prob, dtype=float))
 
 
 def main() -> int:
@@ -250,54 +299,67 @@ def main() -> int:
         rcols = sel(rm)
         pcols = sel(pm)
         ecols = sel(ext)
-        # RM CV (patient-grouped 5-fold)
+        nan = float("nan")
+        # RM CV (patient-grouped 5-fold) + calibration (Brier/ECE) + bootstrap CI
+        rm_brier = rm_ece = rm_lo = rm_hi = nan
         if rcols and len(rm) > 25:
-            rm_auc, rm_std = _cv_auc(rm[rcols], rm["y"], rm["pid"].values)
+            rm_auc, rm_std, rm_y, rm_p = _cv_auc(rm[rcols], rm["y"], rm["pid"].values)
+            rm_brier, rm_ece = _brier_ece(rm_y, rm_p)
+            _, rm_lo, rm_hi = _auc_ci(rm_y, rm_p)
         else:
-            rm_auc = rm_std = float("nan")
-        # PM CV (5-fold, no group split — small n)
+            rm_auc = rm_std = nan
+        # PM CV (5-fold, no group split — small n) + bootstrap CI
+        pm_lo = pm_hi = nan
         if pcols and len(pm) > 25:
-            pm_auc, pm_std = _cv_auc(pm[pcols], pm["y"], None)
+            pm_auc, pm_std, pm_y, pm_p = _cv_auc(pm[pcols], pm["y"], None)
+            _, pm_lo, pm_hi = _auc_ci(pm_y, pm_p)
         else:
-            pm_auc = pm_std = float("nan")
+            pm_auc = pm_std = nan
         # External (no calibration): train RM, test LUNGx-TestSet
         ecols_t = sel(ext_test)
         common_re = [c for c in rcols if c in ecols_t] if (rcols and ecols_t) else []
+        ext_auc = ext_brier = ext_ece = ext_lo = ext_hi = nan
         if common_re and len(ext_test) > 5:
             try:
-                ext_auc = _external_auc(rm[common_re], rm["y"],
-                                         ext_test[common_re], ext_test["y"])
+                ext_auc, ext_y, ext_p = _external_auc(
+                    rm[common_re], rm["y"], ext_test[common_re], ext_test["y"])
+                ext_brier, ext_ece = _brier_ece(ext_y, ext_p)
+                _, ext_lo, ext_hi = _auc_ci(ext_y, ext_p)
             except Exception as e:
-                ext_auc = float("nan"); print(f"  ext {name} err: {e}", file=sys.stderr)
-        else:
-            ext_auc = float("nan")
+                print(f"  ext {name} err: {e}", file=sys.stderr)
 
         # External WITH 10-patient LUNGx-Cal calibration (CMPB 2021 protocol)
         ecols_c = sel(ext_cal)
         common_rec = [c for c in rcols if c in ecols_t and c in ecols_c] if (rcols and ecols_c and ecols_t) else []
+        ext_cal_auc = ext_cal_brier = ext_cal_ece = ext_cal_lo = ext_cal_hi = nan
         if common_rec and len(ext_test) > 5 and len(ext_cal) >= 5:
             try:
-                ext_cal_auc = _external_auc(rm[common_rec], rm["y"],
-                                             ext_test[common_rec], ext_test["y"],
-                                             Xcal=ext_cal[common_rec],
-                                             ycal=ext_cal["y"])
+                ext_cal_auc, extc_y, extc_p = _external_auc(
+                    rm[common_rec], rm["y"], ext_test[common_rec], ext_test["y"],
+                    Xcal=ext_cal[common_rec], ycal=ext_cal["y"])
+                ext_cal_brier, ext_cal_ece = _brier_ece(extc_y, extc_p)
+                _, ext_cal_lo, ext_cal_hi = _auc_ci(extc_y, extc_p)
             except Exception as e:
-                ext_cal_auc = float("nan"); print(f"  ext-cal {name} err: {e}", file=sys.stderr)
-        else:
-            ext_cal_auc = float("nan")
+                print(f"  ext-cal {name} err: {e}", file=sys.stderr)
 
         n_feat_rm = len(rcols); n_feat_pm = len(pcols)
         rows.append({
             "method": name,
-            "RM_auc": rm_auc, "RM_std": rm_std, "RM_n_feat": n_feat_rm,
-            "PM_auc": pm_auc, "PM_std": pm_std, "PM_n_feat": n_feat_pm,
-            "ext_auc": ext_auc,                      # no calibration
-            "ext_cal_auc": ext_cal_auc,              # 10-patient Platt calibration
+            "RM_auc": rm_auc, "RM_std": rm_std,
+            "RM_ci_lo": rm_lo, "RM_ci_hi": rm_hi,
+            "RM_brier": rm_brier, "RM_ece": rm_ece, "RM_n_feat": n_feat_rm,
+            "PM_auc": pm_auc, "PM_std": pm_std,
+            "PM_ci_lo": pm_lo, "PM_ci_hi": pm_hi, "PM_n_feat": n_feat_pm,
+            "ext_auc": ext_auc, "ext_ci_lo": ext_lo, "ext_ci_hi": ext_hi,
+            "ext_brier": ext_brier, "ext_ece": ext_ece,
+            "ext_cal_auc": ext_cal_auc,
+            "ext_cal_ci_lo": ext_cal_lo, "ext_cal_ci_hi": ext_cal_hi,
+            "ext_cal_brier": ext_cal_brier, "ext_cal_ece": ext_cal_ece,
         })
-        print(f"  {name:20s}  RM={rm_auc:.3f}±{rm_std:.3f} "
-              f"PM={pm_auc:.3f}±{pm_std:.3f}  "
-              f"ext={ext_auc:.3f} ext+cal={ext_cal_auc:.3f}  "
-              f"(feats RM={n_feat_rm})", file=sys.stderr)
+        print(f"  {name:20s}  RM={rm_auc:.3f}[{rm_lo:.3f},{rm_hi:.3f}] "
+              f"Brier={rm_brier:.3f} ECE={rm_ece:.3f}  "
+              f"PM={pm_auc:.3f}  ext={ext_auc:.3f} ext+cal={ext_cal_auc:.3f}",
+              file=sys.stderr)
 
     out_md = [
         "# Methods comparison on a single qradiomics-public pipeline\n",
@@ -316,17 +378,35 @@ def main() -> int:
         f"SPIE-AAPM-NCI / CMPB 2021 protocol.\n",
         "**Reference (CMPB 2021)**: LIDC-PM AUC 0.85 (Size + Spiculations), "
         "LUNGx external AUC 0.76 (with calibration).\n",
-        "| Method | n feat | RM AUC | PM AUC | External (no cal) | External + cal |",
-        "| :--- | --: | :--- | :--- | :--- | :--- |",
+        "**Rigour additions** (this report): every AUC carries a percentile "
+        "bootstrap **95% CI** (n=2000) on pooled held-out predictions, and "
+        "discrimination is paired with **calibration quality** — Brier score "
+        "and Expected Calibration Error (ECE) on the RM out-of-fold and the "
+        "LUNGx external+cal predictions — so a well-ranking but mis-calibrated "
+        "model is no longer reported as a clean success.\n",
+        "| Method | n feat | RM AUC [95% CI] | RM Brier / ECE | PM AUC [95% CI] "
+        "| External+cal AUC [95% CI] | Ext+cal Brier / ECE |",
+        "| :--- | --: | :--- | :--- | :--- | :--- | :--- |",
     ]
+
+    def _ci(a, lo, hi):
+        if np.isnan(a):
+            return "—"
+        if np.isnan(lo):
+            return f"{a:.3f}"
+        return f"{a:.3f} [{lo:.3f}, {hi:.3f}]"
+
+    def _cal(b, e):
+        return "—" if np.isnan(b) else f"{b:.3f} / {e:.3f}"
+
     for r in rows:
-        ext_str = f"{r['ext_auc']:.3f}" if not np.isnan(r['ext_auc']) else "—"
-        ext_cal_str = f"{r['ext_cal_auc']:.3f}" if not np.isnan(r['ext_cal_auc']) else "—"
         out_md.append(
             f"| `{r['method']}` | {r['RM_n_feat']} | "
-            f"{r['RM_auc']:.3f} ± {r['RM_std']:.3f} | "
-            f"{r['PM_auc']:.3f} ± {r['PM_std']:.3f} | "
-            f"{ext_str} | {ext_cal_str} |"
+            f"{_ci(r['RM_auc'], r['RM_ci_lo'], r['RM_ci_hi'])} | "
+            f"{_cal(r['RM_brier'], r['RM_ece'])} | "
+            f"{_ci(r['PM_auc'], r['PM_ci_lo'], r['PM_ci_hi'])} | "
+            f"{_ci(r['ext_cal_auc'], r['ext_cal_ci_lo'], r['ext_cal_ci_hi'])} | "
+            f"{_cal(r['ext_cal_brier'], r['ext_cal_ece'])} |"
         )
     args.out.write_text("\n".join(out_md) + "\n")
     print(json.dumps(rows, indent=2, default=lambda x: None), file=sys.stderr)

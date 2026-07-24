@@ -9,6 +9,12 @@
 # Exports: $QR (the actual command), PYTHONPATH (if fallback was used).
 # Defines a shell function `qr` that delegates to $QR so existing scripts
 # work unchanged.
+#
+# Also sources _env.sh so MLFLOW_TRACKING_URI / PREFECT_API_URL get the
+# canonical lab defaults before any qr / Prefect / MLflow client runs.
+
+# shellcheck source=./_env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
 
 if [ -z "${QR:-}" ]; then
     if command -v qr >/dev/null 2>&1 && command qr workflow templates >/dev/null 2>&1; then

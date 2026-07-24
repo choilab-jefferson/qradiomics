@@ -28,13 +28,15 @@ are the canonical workflow shapes the CLI can scaffold.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 # ─── Data model ──────────────────────────────────────────────────────────────
@@ -259,7 +261,7 @@ def template_dicom_to_ml(
             ),
             WorkflowStep(
                 id="manifest_nrrd",
-                stage="data",
+                stage="image",
                 cmd="convert manifest-from-dir",
                 args={
                     "dataset-root": "{nrrd_dir}",
@@ -400,59 +402,160 @@ def template_tcia_to_ml(
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
     max_series: int = 0,
+    convert_jobs: int = 4,
+    extract_jobs: int = 4,
 ) -> WorkflowPlan:
-    """Full TCIA → outcome-prediction ML model workflow.
+    """Full TCIA → outcome-prediction ML model workflow (8 steps).
 
-    Adds a `tcia` stage in front of `dicom_to_ml`:
-      0. tcia       — qr tcia series + qr tcia download (downloads DICOM)
-      1. data       — qr convert manifest-from-dir
-      2. image      — qr convert dicom-series + qr convert rtstruct (per-patient)
-      3. features   — qr extract + qr results merge
-      4. modeling   — qr ml train + qr ml evaluate
+    The 8 steps map cleanly onto the canonical 4-stage architecture:
+
+    \b
+      data:      tcia_series  →  series.csv
+                 tcia_download →  DICOM tree under {outdir}/dicom
+                 tcia_manifest →  (pid, modality, CT-dir, RTSTRUCT-file) CSV
+      image:     convert_from_manifest → per-patient NRRDs + nrrd manifest CSV
+      features:  extract       →  features.csv
+                 merge         →  analysis_ready.csv
+      modeling:  train         →  model.pkl + cv_metrics.json
+                 evaluate      →  evaluation.json
+
+    Why not reuse template_dicom_to_ml: TCIA's UID-based DICOM tree
+    (`<patient>/<study-uid>/<series-uid>/<n>.dcm`) makes glob-based
+    classification impossible (`**/CT` matches nothing). We use the
+    Modality column from `qr tcia series`'s output instead, then convert
+    every (image_dir, rtstruct) row in one batch — the two `qr tcia
+    manifest` + `qr convert from-manifest` primitives.
     """
-    plan = template_dicom_to_ml(
-        cohort_root=f"{outdir}/dicom",   # populated by the tcia step
-        clinical_csv=clinical_csv,
-        roi=roi,
-        pattern=pattern,
-        task=task,
-        outcome=outcome,
-        time_col=time_col,
-        event_col=event_col,
-        outdir=outdir,
+    return WorkflowPlan(
+        name=f"tcia_to_ml_{task}",
+        description="TCIA → outcome-prediction ML model (8 steps, 4 canonical stages).",
+        vars={
+            "outdir": outdir,
+            "nrrd_dir": f"{outdir}/nrrd",
+            "clinical_csv": clinical_csv,
+            "collection": collection,
+            "modalities": modalities,
+            "max_series": max_series,
+            "convert_jobs": convert_jobs,
+            "extract_jobs": extract_jobs,
+            "roi": roi,
+            "pattern": pattern,
+            "task": task,
+            "outcome": outcome,
+            "time_col": time_col,
+            "event_col": event_col,
+        },
+        steps=[
+            # ── Stage 1: data ────────────────────────────────────────────────
+            WorkflowStep(
+                id="tcia_series",
+                stage="data",
+                cmd="tcia series",
+                args={
+                    "collection": "{collection}",
+                    "output": "{outdir}/series.csv",
+                },
+                outputs=["{outdir}/series.csv"],
+            ),
+            WorkflowStep(
+                id="tcia_download",
+                stage="data",
+                cmd="tcia download",
+                args={
+                    "manifest": "{outdir}/series.csv",
+                    "output": "{outdir}/dicom",
+                    "max-series": "{max_series}",
+                },
+                inputs=["{outdir}/series.csv"],
+                outputs=["{outdir}/dicom"],
+            ),
+            WorkflowStep(
+                id="tcia_manifest",
+                stage="data",
+                cmd="tcia manifest",
+                args={
+                    "series": "{outdir}/series.csv",
+                    "dicom-root": "{outdir}/dicom",
+                    "output": "{outdir}/dicom_manifest.csv",
+                },
+                inputs=["{outdir}/series.csv", "{outdir}/dicom"],
+                outputs=["{outdir}/dicom_manifest.csv"],
+            ),
+            # ── Stage 2: image (DICOM → NRRD, batched over the manifest) ─────
+            WorkflowStep(
+                id="convert_from_manifest",
+                stage="image",
+                cmd="convert from-manifest",
+                args={
+                    "manifest": "{outdir}/dicom_manifest.csv",
+                    "nrrd-dir": "{nrrd_dir}",
+                    "roi": "{roi}",
+                    "output": "{outdir}/manifest.csv",
+                    "jobs": "{convert_jobs}",
+                },
+                inputs=["{outdir}/dicom_manifest.csv"],
+                outputs=["{outdir}/manifest.csv"],
+            ),
+            # ── Stage 3: features ────────────────────────────────────────────
+            WorkflowStep(
+                id="extract",
+                stage="features",
+                cmd="extract",
+                args={
+                    "manifest": "{outdir}/manifest.csv",
+                    "pattern": "{pattern}",
+                    "output": "{outdir}/features.csv",
+                    "jobs": "{extract_jobs}",
+                },
+                inputs=["{outdir}/manifest.csv"],
+                outputs=["{outdir}/features.csv"],
+            ),
+            WorkflowStep(
+                id="merge",
+                stage="features",
+                cmd="results merge",
+                args={
+                    "features": "{outdir}/features.csv",
+                    "clinical": "{clinical_csv}",
+                    "clinical-id-col": "patient_id",
+                    "time-col": "{time_col}",
+                    "event-col": "{event_col}",
+                    "output": "{outdir}/analysis_ready.csv",
+                },
+                inputs=["{outdir}/features.csv", "{clinical_csv}"],
+                outputs=["{outdir}/analysis_ready.csv"],
+            ),
+            # ── Stage 4: modeling ────────────────────────────────────────────
+            WorkflowStep(
+                id="train",
+                stage="modeling",
+                cmd="ml train",
+                args={
+                    "input": "{outdir}/analysis_ready.csv",
+                    "task": "{task}",
+                    "outcome": "{outcome}",
+                    "model": "{outdir}/model.pkl",
+                    "metrics": "{outdir}/cv_metrics.json",
+                },
+                inputs=["{outdir}/analysis_ready.csv"],
+                outputs=["{outdir}/model.pkl", "{outdir}/cv_metrics.json"],
+            ),
+            WorkflowStep(
+                id="evaluate",
+                stage="modeling",
+                cmd="ml evaluate",
+                args={
+                    "input": "{outdir}/analysis_ready.csv",
+                    "model": "{outdir}/model.pkl",
+                    "task": "{task}",
+                    "outcome": "{outcome}",
+                    "report": "{outdir}/evaluation.json",
+                },
+                inputs=["{outdir}/analysis_ready.csv", "{outdir}/model.pkl"],
+                outputs=["{outdir}/evaluation.json"],
+            ),
+        ],
     )
-    plan.name = f"tcia_to_ml_{task}"
-    plan.description = "TCIA download → DICOM → outcome-prediction ML model (5 stages)."
-    plan.vars["collection"] = collection
-    plan.vars["modalities"] = modalities
-    plan.vars["max_series"] = max_series
-
-    tcia_steps = [
-        WorkflowStep(
-            id="tcia_series",
-            stage="data",
-            cmd="tcia series",
-            args={
-                "collection": "{collection}",
-                "output": "{outdir}/series.csv",
-            },
-            outputs=["{outdir}/series.csv"],
-        ),
-        WorkflowStep(
-            id="tcia_download",
-            stage="data",
-            cmd="tcia download",
-            args={
-                "manifest": "{outdir}/series.csv",
-                "output": "{outdir}/dicom",
-                "max-series": "{max_series}",
-            },
-            inputs=["{outdir}/series.csv"],
-            outputs=["{outdir}/dicom"],
-        ),
-    ]
-    plan.steps = tcia_steps + plan.steps
-    return plan
 
 
 LIBRARY = {
@@ -466,18 +569,39 @@ LIBRARY = {
 # ─── Resolver ────────────────────────────────────────────────────────────────
 
 
-def _resolve(value: Any, vars: Dict[str, Any]) -> Any:
-    """Substitute {var} placeholders in strings, recursively."""
+def _resolve(value: Any, vars: Dict[str, Any],
+             patient_id: Optional[str] = None) -> Any:
+    """Substitute {var} placeholders in strings, recursively.
+
+    When `patient_id` is given, `{patient_id}` is also substituted — used by
+    the per-patient inline executor to expand a single step into one
+    invocation per patient.
+    """
     if isinstance(value, str):
         out = value
+        if patient_id is not None:
+            out = out.replace("{patient_id}", patient_id)
         for k, v in vars.items():
             out = out.replace("{" + k + "}", str(v))
         return out
     if isinstance(value, list):
-        return [_resolve(v, vars) for v in value]
+        return [_resolve(v, vars, patient_id=patient_id) for v in value]
     if isinstance(value, dict):
-        return {k: _resolve(v, vars) for k, v in value.items()}
+        return {k: _resolve(v, vars, patient_id=patient_id) for k, v in value.items()}
     return value
+
+
+def _list_cohort_patients(cohort_root: Optional[str]) -> List[str]:
+    """Discover patient subdirectories under a cohort root. Returns [] when
+    the path is unset or doesn't exist, so callers can skip per-patient steps
+    cleanly without exception handling.
+    """
+    if not cohort_root:
+        return []
+    root = Path(str(cohort_root))
+    if not root.is_dir():
+        return []
+    return sorted(p.name for p in root.iterdir() if p.is_dir())
 
 
 # ─── Runner ──────────────────────────────────────────────────────────────────
@@ -510,19 +634,69 @@ class WorkflowRunner:
         raise ValueError(f"Unknown executor '{self.executor}'")
 
     def _run_inline(self) -> List[Dict[str, Any]]:
+        """Sequential by-step execution; per-patient steps fan out across a
+        bounded thread pool (size = QR_INLINE_WORKERS, default 4).
+
+        Stays usable when Nextflow / Prefect are absent — the trade-off is
+        bounded parallelism: only per-patient steps within a single stage are
+        concurrent, never across stages. For real production scale, run with
+        --executor nextflow instead.
+        """
         results: List[Dict[str, Any]] = []
+        workers = max(1, int(os.environ.get("QR_INLINE_WORKERS", "4")))
         for step in self.plan.steps:
-            cmd = self._build_command(step)
-            if self.dry_run:
-                results.append({"id": step.id, "cmd": cmd, "status": "dry-run"})
-                continue
-            for out in step.outputs:
-                Path(_resolve(out, self.plan.vars)).parent.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(cmd, check=False)
-            results.append({"id": step.id, "cmd": cmd, "returncode": proc.returncode})
-            if proc.returncode != 0:
-                break
+            if step.per_patient:
+                patients = _list_cohort_patients(self.plan.vars.get("cohort_root"))
+                if not patients:
+                    results.append({"id": step.id, "skipped": "no patients found",
+                                    "cohort_root": self.plan.vars.get("cohort_root")})
+                    continue
+                per_pid_results = self._run_per_patient(step, patients, workers)
+                results.extend(per_pid_results)
+                if any(r.get("returncode", 0) != 0 for r in per_pid_results):
+                    break
+            else:
+                cmd = self._build_command(step)
+                if self.dry_run:
+                    results.append({"id": step.id, "cmd": cmd, "status": "dry-run"})
+                    continue
+                for out in step.outputs:
+                    Path(_resolve(out, self.plan.vars)).parent.mkdir(parents=True, exist_ok=True)
+                proc = subprocess.run(cmd, check=False)
+                results.append({"id": step.id, "cmd": cmd, "returncode": proc.returncode})
+                if proc.returncode != 0:
+                    break
         return results
+
+    def _run_per_patient(self, step: WorkflowStep, patients: List[str],
+                         workers: int) -> List[Dict[str, Any]]:
+        """Fan a per-patient step across `workers` threads, one task per id."""
+        out: List[Dict[str, Any]] = []
+        if self.dry_run:
+            for pid in patients:
+                out.append({"id": step.id, "patient_id": pid,
+                            "cmd": self._build_command(step, patient_id=pid),
+                            "status": "dry-run"})
+            return out
+
+        def _run_one(pid: str) -> Dict[str, Any]:
+            cmd = self._build_command(step, patient_id=pid)
+            for o in step.outputs:
+                Path(_resolve(o, self.plan.vars, patient_id=pid)).parent.mkdir(
+                    parents=True, exist_ok=True
+                )
+            proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            return {
+                "id": step.id, "patient_id": pid, "cmd": cmd,
+                "returncode": proc.returncode,
+                "stderr_tail": proc.stderr[-500:] if proc.returncode else "",
+            }
+
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(_run_one, pid): pid for pid in patients}
+            for fut in as_completed(futures):
+                out.append(fut.result())
+        return out
 
     def _run_nextflow(self) -> List[Dict[str, Any]]:
         if shutil.which("nextflow") is None:
@@ -546,13 +720,14 @@ class WorkflowRunner:
             proc = subprocess.run(cmd, check=False)
             return [{"executor": "prefect", "cmd": cmd, "returncode": proc.returncode}]
 
-    def _build_command(self, step: WorkflowStep) -> List[str]:
+    def _build_command(self, step: WorkflowStep,
+                       patient_id: Optional[str] = None) -> List[str]:
         # Use `python -m qradiomics.cli.main` rather than the bare `qr` shim
         # so the runner is robust to PATH and pre-v0.9 shim leftovers.
         parts: List[str] = [sys.executable, "-m", "qradiomics.cli.main"] + step.cmd.split()
         for k, v in step.args.items():
             parts.append(f"--{k}")
-            parts.append(str(_resolve(v, self.plan.vars)))
+            parts.append(str(_resolve(v, self.plan.vars, patient_id=patient_id)))
         return parts
 
 
@@ -587,16 +762,86 @@ def scaffold_shell(plan: WorkflowPlan) -> str:
 
 
 def scaffold_prefect(plan: WorkflowPlan) -> str:
-    """Render the plan as a Prefect 2.x flow (secondary executor).
+    """Render the plan as a Prefect 2.x flow with a three-level hierarchy.
 
-    Each WorkflowStep becomes a `@task`. Per-patient steps are mapped over
-    a patient list discovered from `params.cohort_root`. The generated
-    flow can be invoked via `python <file>.py` or registered with a
-    Prefect deployment for scheduled runs.
+    The generated artefact is::
+
+        @flow cohort_flow(...)              # top — one per cohort run
+            ↓ calls
+        @flow phase_a_features(...)         # subflow — Phase A (data/image/features)
+            ↓ calls
+            @task stage_data() | stage_image() | stage_features()
+
+        @flow phase_b_modeling(...)         # subflow — Phase B (modeling)
+            ↓ calls
+            @task stage_modeling()
+
+    Why this shape: the two-phase architecture (see
+    `wiki/architecture/NEXTFLOW_REACTIVATION.md` §2) splits cohort runs at
+    the `analysis_ready.csv` boundary. Surfacing that split as two Prefect
+    subflows makes the UI show a clean parent → 2 subflows → ≤ 4 tasks tree
+    instead of a flat task list. Each subflow can be re-run independently
+    from the UI ("Phase B only" with a fresh model on the same features).
+
+    Coarse remains coarse: there is still exactly one `@task` per pipeline
+    stage, never per patient. Per-patient fan-out happens inside the task
+    via a thread pool; Nextflow / sklearn handle the real parallelism.
+
+    Canonical artifacts auto-registered as Prefect link artifacts when they
+    exist after a stage completes::
+
+        data      → series.csv, dicom_manifest.csv
+        image     → manifest.csv
+        features  → features.csv
+        modeling  → analysis_ready.csv, model.pkl, cv_metrics.json,
+                    evaluation.json
     """
-    lines = [
+    # Group steps by stage. We require stage labels to form contiguous runs
+    # in declaration order — interleaved stages (e.g. data→image→data) would
+    # silently reorder execution when we collapse them into stage tasks, which
+    # would break dependencies. If you hit this, either re-label the offending
+    # step or split it out into its own stage.
+    stages_order: List[str] = []
+    by_stage: Dict[str, List[WorkflowStep]] = {}
+    seen_stages: set = set()
+    last_stage: str | None = None
+    for step in plan.steps:
+        if step.stage != last_stage:
+            if step.stage in seen_stages:
+                raise ValueError(
+                    f"scaffold_prefect: stage '{step.stage}' is interleaved with "
+                    f"other stages — step '{step.id}' returns to stage '{step.stage}' "
+                    f"after intervening stages. Re-label the step or split the plan."
+                )
+            stages_order.append(step.stage)
+            by_stage[step.stage] = []
+            seen_stages.add(step.stage)
+            last_stage = step.stage
+        by_stage[step.stage].append(step)
+
+    # Stage → canonical artifacts to register if they exist after the stage
+    # task completes. Paths are formatted with PARAMS at runtime.
+    canonical_artifacts = {
+        "data": ["{outdir}/series.csv", "{outdir}/dicom_manifest.csv"],
+        "image": ["{outdir}/manifest.csv"],
+        "features": ["{outdir}/features.csv"],
+        "modeling": [
+            "{outdir}/analysis_ready.csv",
+            "{outdir}/model.pkl",
+            "{outdir}/cv_metrics.json",
+            "{outdir}/evaluation.json",
+        ],
+    }
+
+    lines: List[str] = [
         f"# {plan.name} — generated by `qr workflow scaffold --executor prefect`",
         f"# {plan.description}",
+        "#",
+        "# Coarse stage-level Prefect flow. One @task per pipeline stage; per-",
+        "# patient fan-out happens inside the task via a thread pool so the",
+        "# Prefect UI stays readable. Prefect tracks WHEN/WHERE; qr does WHAT.",
+        "import os",
+        "from concurrent.futures import ThreadPoolExecutor, as_completed",
         "from pathlib import Path",
         "from subprocess import run",
         "from prefect import flow, task",
@@ -610,48 +855,133 @@ def scaffold_prefect(plan: WorkflowPlan) -> str:
             lines.append(f'    "{k}": {v!r},')
     lines.append("}")
     lines.append("")
-    lines.append("def _format(value):")
-    lines.append("    \"\"\"Substitute {var} placeholders in a string.\"\"\"")
+    lines.append("MAX_WORKERS = int(os.environ.get('QR_PREFECT_WORKERS', '4'))")
+    lines.append("")
+    lines.append("def _format(value, pid=None):")
+    lines.append('    """Substitute {var} placeholders. {patient_id} → pid when given."""')
     lines.append("    if isinstance(value, str):")
+    lines.append("        if pid is not None:")
+    lines.append("            value = value.replace('{patient_id}', pid)")
     lines.append("        for k, v in PARAMS.items():")
     lines.append("            value = value.replace('{' + k + '}', str(v))")
     lines.append("    return value")
     lines.append("")
+    lines.append("def _patients():")
+    lines.append("    cohort = Path(_format('{cohort_root}'))")
+    lines.append("    if not cohort.is_dir():")
+    lines.append("        return []")
+    lines.append("    return sorted(p.name for p in cohort.iterdir() if p.is_dir())")
+    lines.append("")
+    lines.append("def _register_artifacts(stage):")
+    lines.append('    """Attach canonical artifacts to the active Prefect run."""')
+    lines.append("    try:")
+    lines.append("        from prefect.artifacts import create_link_artifact")
+    lines.append("    except ImportError:")
+    lines.append("        return")
+    lines.append("    for path_tmpl in _STAGE_ARTIFACTS.get(stage, []):")
+    lines.append("        p = Path(_format(path_tmpl))")
+    lines.append("        if p.exists():")
+    lines.append("            try:")
+    lines.append("                # Path.as_uri() requires an absolute path; the plan vars use")
+    lines.append("                # relative paths (e.g. `runs/<cohort>/...`). Resolve against")
+    lines.append("                # the worker's CWD before turning into a file:// URI.")
+    lines.append("                create_link_artifact(")
+    lines.append("                    key=f'{stage}-{p.name.replace(\".\", \"-\")}',")
+    lines.append("                    link=p.resolve().as_uri(),")
+    lines.append("                    description=f'{stage} stage artifact: {p.name}',")
+    lines.append("                )")
+    lines.append("            except Exception:")
+    lines.append("                # Never let an observability hiccup kill a real stage.")
+    lines.append("                pass")
+    lines.append("")
+    lines.append("_STAGE_ARTIFACTS = {")
+    for stage, arts in canonical_artifacts.items():
+        if stage in by_stage:
+            arts_repr = ", ".join(repr(a) for a in arts)
+            lines.append(f'    "{stage}": [{arts_repr}],')
+    lines.append("}")
+    lines.append("")
 
-    task_names: List[str] = []
-    for step in plan.steps:
-        tname = "t_" + step.id
-        task_names.append(tname)
-        sig = "(patient_id: str)" if step.per_patient else "()"
+    # Emit the bash command builder for a single step, used by stage tasks.
+    lines.append("def _run_step(cmd_str, args, pid=None):")
+    lines.append('    """Run a single qr step. cmd_str is the qr verb chain; args is a dict."""')
+    lines.append("    cmd = ['qr'] + cmd_str.split()")
+    lines.append("    for k, v in args.items():")
+    lines.append("        cmd.append(f'--{k}')")
+    lines.append("        cmd.append(_format(str(v), pid=pid))")
+    lines.append("    Path(_format('{outdir}')).mkdir(parents=True, exist_ok=True)")
+    lines.append("    run(cmd, check=True)")
+    lines.append("")
+
+    # Emit one @task per stage.
+    stage_task_names: List[str] = []
+    for stage in stages_order:
+        steps_in_stage = by_stage[stage]
+        tname = f"stage_{stage}"
+        stage_task_names.append(tname)
         lines.append("@task")
-        lines.append(f"def {tname}{sig}:")
-        cmd_parts = ['"qr"'] + [f'"{p}"' for p in step.cmd.split()]
-        for k, v in step.args.items():
-            cmd_parts.append(f'"--{k}"')
-            v_str = str(v)
-            if step.per_patient and "{patient_id}" in v_str:
-                v_str = v_str.replace("{patient_id}", "{pid}")
-                # Use f-string so we can inject pid; PARAMS substitution handled by _format
-                cmd_parts.append(f'_format(f"{v_str}".replace("{{pid}}", patient_id))')
+        lines.append(f"def {tname}():")
+        lines.append(f'    """Stage `{stage}` — {len(steps_in_stage)} step(s):'
+                     f' {", ".join(s.id for s in steps_in_stage)}."""')
+        for step in steps_in_stage:
+            args_repr = "{" + ", ".join(f'"{k}": {v!r}' for k, v in step.args.items()) + "}"
+            if step.per_patient:
+                lines.append(f"    # Per-patient step `{step.id}`: parallel across cohort")
+                lines.append("    pats = _patients()")
+                lines.append("    if pats:")
+                lines.append("        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:")
+                lines.append(
+                    f"            futures = [ex.submit(_run_step, {step.cmd!r}, {args_repr}, pid=p)"
+                    f" for p in pats]"
+                )
+                lines.append("            for f in as_completed(futures):")
+                lines.append("                f.result()  # propagate exceptions")
             else:
-                cmd_parts.append(f'_format("{v_str}")')
-        cmd = "cmd = [" + ", ".join(cmd_parts) + "]"
-        lines.append("    " + cmd)
-        lines.append("    Path(_format('{outdir}')).mkdir(parents=True, exist_ok=True)")
-        lines.append("    run(cmd, check=True)")
+                lines.append(f"    # Step `{step.id}`")
+                lines.append(f"    _run_step({step.cmd!r}, {args_repr})")
+        if stage in canonical_artifacts:
+            lines.append(f'    _register_artifacts("{stage}")')
         lines.append("")
 
-    lines.append("@flow")
-    lines.append("def workflow():")
-    if any(s.per_patient for s in plan.steps):
-        lines.append("    cohort = Path(_format('{cohort_root}'))")
-        lines.append("    patients = sorted(p.name for p in cohort.iterdir() if p.is_dir())")
-    for step in plan.steps:
-        tname = "t_" + step.id
-        if step.per_patient:
-            lines.append(f"    {tname}.map(patients)")
-        else:
+    # ─── Phase classification ───────────────────────────────────────────────
+    # Phase A = data + image + features (the Nextflow-suited side).
+    # Phase B = modeling (the MLflow/sklearn side).
+    # Any other stage label falls under Phase A by default — keep the
+    # classification side-effect-free so callers can extend stages later.
+    phase_b_stages = {"modeling"}
+    phase_a_task_names = [n for n, s in zip(stage_task_names, stages_order)
+                          if s not in phase_b_stages]
+    phase_b_task_names = [n for n, s in zip(stage_task_names, stages_order)
+                          if s in phase_b_stages]
+
+    # ─── Subflow: Phase A (features) ────────────────────────────────────────
+    if phase_a_task_names:
+        lines.append("@flow(name='phase_a_features')")
+        lines.append("def phase_a_features():")
+        lines.append('    """Phase A — PACS/TCIA → features. Nextflow-suited, file-level fan-out."""')
+        for tname in phase_a_task_names:
             lines.append(f"    {tname}()")
+        lines.append("")
+
+    # ─── Subflow: Phase B (modeling) ────────────────────────────────────────
+    if phase_b_task_names:
+        lines.append("@flow(name='phase_b_modeling')")
+        lines.append("def phase_b_modeling():")
+        lines.append('    """Phase B — analysis_ready.csv → trained model. MLflow-suited."""')
+        for tname in phase_b_task_names:
+            lines.append(f"    {tname}()")
+        lines.append("")
+
+    # ─── Top-level @flow that calls the subflows in order ──────────────────
+    lines.append("@flow(name=" + repr(plan.name) + ")")
+    lines.append("def workflow():")
+    lines.append('    """Cohort entry point — wires Phase A → Phase B."""')
+    if phase_a_task_names:
+        lines.append("    phase_a_features()")
+    if phase_b_task_names:
+        lines.append("    phase_b_modeling()")
+    if not phase_a_task_names and not phase_b_task_names:
+        lines.append("    pass  # empty plan; nothing to run")
     lines.append("")
     lines.append("if __name__ == '__main__':")
     lines.append("    workflow()")
@@ -713,20 +1043,34 @@ def scaffold_nextflow(plan: WorkflowPlan) -> str:
         lines.append("}")
         lines.append("")
 
+    # Helper closure: list patient subdirectories of cohort_root. Defined at
+    # script scope so the workflow body can reference it. The closure is only
+    # evaluated when invoked inside a per-patient flatMap, by which point the
+    # upstream `done` signal has fired and cohort_root is populated.
+    lines.append("def _list_patients() {")
+    lines.append('    def d = new File("${params.cohort_root}")')
+    lines.append("    return d.isDirectory()")
+    lines.append("        ? d.listFiles().findAll { f -> f.isDirectory() }.collect { f -> f.name }")
+    lines.append("        : []")
+    lines.append("}")
+    lines.append("")
     lines.append("workflow {")
-    lines.append("    // Channel of patient IDs; emits once upstream has populated cohort_root")
-    lines.append(
-        '    patients = Channel.value(1).map {'
-        ' new File("${params.cohort_root}").listFiles().findAll { d -> d.isDirectory() }.collect { d -> d.name }'
-        ' }.flatten()'
-    )
     lines.append("    ready = Channel.value(true)")
     lines.append("")
     prev_done = "ready"
     for step in plan.steps:
         pname = "p_" + step.id
         if step.per_patient:
-            lines.append(f"    {pname}_in = patients.combine({prev_done})")
+            # Lazy patients fan-out: list cohort_root *after* the upstream done
+            # signal arrives. The earlier `Channel.value(1).map { File.listFiles() }`
+            # pattern eagerly evaluated at workflow definition time, silently
+            # producing an empty channel when cohort_root was populated by an
+            # upstream NF process — every per-patient step then ran zero times
+            # while NF reported SUCCESS.
+            lines.append(
+                f"    {pname}_in = {prev_done}.flatMap {{ it -> _list_patients() }}"
+                f".map {{ pid -> tuple(pid, true) }}"
+            )
             lines.append(f"    {pname}({pname}_in)")
             lines.append(f"    {pname}_done = {pname}.out.done.collect().map {{ true }}")
             prev_done = f"{pname}_done"

@@ -25,15 +25,21 @@ fails on degenerate masks).
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH (run.sh sets it via
+# _qr_resolve.sh, but a developer poking at the script directly should
+# still work).
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.atomic import extract_features
 from qradiomics.io.lidc import (
     parse_lidc_xml,
@@ -184,37 +190,18 @@ def main() -> int:
 
     work = [(pat.name, str(pat), args.lidc_src, args.params, args.min_voxels)
             for pat in patients]
-    all_rows: list[dict] = []
-    ok = fail = 0
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_extract_one_patient, w): w[0] for w in work}
-        for fut in as_completed(futs):
-            pid = futs[fut]
-            try:
-                rows = fut.result()
-            except Exception as e:
-                fail += 1
-                print(f"  ✘ {pid}: {e}", file=sys.stderr)
-                continue
-            valid = [r for r in rows if r.get("status_radiomics") == "ok"
-                                       or "feat" in {k.split("_")[0] for k in r.keys()}]
-            if valid:
-                ok += 1
-            else:
-                fail += 1
-            all_rows.extend(rows)
-            print(f"  ✓ {pid}: {len(rows)} row(s)", file=sys.stderr)
 
+    def _is_ok(rows: list[dict]) -> bool:
+        return any(r.get("status_radiomics") == "ok"
+                   or "feat" in {k.split("_")[0] for k in r.keys()}
+                   for r in rows)
+
+    all_rows = run_parallel_rows(
+        work, _extract_one_patient, args.jobs, args.out,
+        is_ok=_is_ok, skip_write_if_empty=True, summary_leading_blank=True,
+    )
     if not all_rows:
-        print("no rows produced", file=sys.stderr); return 1
-
-    keys = sorted({k for row in all_rows for k in row.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(all_rows)
-    print(f"\nwrote {len(all_rows)} rows → {args.out}  "
-          f"({ok} ok / {fail} fail)", file=sys.stderr)
+        return 1
     return 0
 
 

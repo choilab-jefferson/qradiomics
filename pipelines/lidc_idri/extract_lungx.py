@@ -15,17 +15,21 @@ Truth files (download with `curl` from TCIA):
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.atomic import extract_features
 from qradiomics.io.dicom import load_dicom_series
 from qradiomics.shape import spiculation_from_voxel
@@ -230,27 +234,10 @@ def main() -> int:
                      str(dicom_dir), not args.skip_spiculation))
     print(f"  → {len(work)} tasks queued", file=sys.stderr)
 
-    all_rows = []; ok = fail = 0
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_process_one, w): w[0] for w in work}
-        for fut in as_completed(futs):
-            scan = futs[fut]
-            try:
-                rows = fut.result()
-            except Exception as e:
-                fail += 1; print(f"  ✘ {scan}: {e}", file=sys.stderr); continue
-            ok_row = sum(1 for r in rows if r.get("status_radiomics") == "ok")
-            if ok_row: ok += 1
-            else:      fail += 1
-            all_rows.extend(rows)
-            print(f"  ✓ {scan}: {len(rows)} row(s)", file=sys.stderr)
-
-    keys = sorted({k for r in all_rows for k in r.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader(); w.writerows(all_rows)
-    print(f"wrote {len(all_rows)} rows → {args.out}  ({ok} ok / {fail} fail)",
-          file=sys.stderr)
+    run_parallel_rows(
+        work, _process_one, args.jobs, args.out,
+        is_ok=lambda rows: any(r.get("status_radiomics") == "ok" for r in rows),
+    )
     return 0
 
 

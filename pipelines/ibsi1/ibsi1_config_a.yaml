@@ -1,0 +1,38 @@
+# PyRadiomics parameters mirroring the IBSI-1 digital-phantom config "A".
+#
+# IBSI config A (chapter 2 digital phantom):
+#   - NO interpolation / resampling   -> resampledPixelSpacing absent
+#   - NO resegmentation               -> no resegmentRange
+#   - NO normalization                -> normalize: false
+#   - Fixed-bin-number discretisation, effectively raw integer levels.
+#     The phantom has 6 grey levels (1..6); binWidth=1 maps each integer
+#     level to its own bin, reproducing the IBSI "no discretisation" intent.
+#   - Full 3D (by_slice = False)      -> force2D: false
+#
+# This file is consumed by pipelines/ibsi1/run_ibsi1_parity.py and the pytest
+# tests/test_ibsi1_phantom_parity.py.
+
+setting:
+  binWidth: 1
+  normalize: false
+  resegmentRange: null
+  interpolator: null
+  force2D: false
+  label: 1
+  geometryTolerance: 0.0001
+  # IBSI reference uses no value/count corrections; keep PyRadiomics defaults
+  # for symmetrical GLCM (averaged over 13 3D directions) which corresponds to
+  # the IBSI "3D, averaged (3D_avg)" aggregation.
+  weightingNorm: null
+
+imageType:
+  Original: {}
+
+featureClass:
+  shape:
+  firstorder:
+  glcm:
+  glrlm:
+  glszm:
+  gldm:
+  ngtdm:

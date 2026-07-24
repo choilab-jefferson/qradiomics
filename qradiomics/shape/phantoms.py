@@ -566,3 +566,43 @@ def make(name: str, **kwargs) -> Phantom:
     if name not in ALL_PHANTOMS:
         raise KeyError(f"unknown phantom: {name}; available: {sorted(ALL_PHANTOMS)}")
     return ALL_PHANTOMS[name](**kwargs)
+
+
+# =====================================================================
+# Pure geometric primitives (used by public tests and by qradiomics_private.shape.demo)
+# =====================================================================
+
+def _grid(size: int = 33) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    c = (size - 1) / 2
+    z, y, x = np.indices((size, size, size), dtype=np.float32)
+    return z - c, y - c, x - c
+
+
+def sphere(size: int = 33, r: float = 8.0, bright: float = -200,
+            bg: float = -900) -> np.ndarray:
+    z, y, x = _grid(size)
+    rho = np.sqrt(z ** 2 + y ** 2 + x ** 2)
+    return np.where(rho <= r, bright, bg).astype(np.float32)
+
+
+def cylinder(size: int = 33, r: float = 4.0, bright: float = -200,
+              bg: float = -900) -> np.ndarray:
+    _, y, x = _grid(size)
+    rho = np.sqrt(y ** 2 + x ** 2)
+    return np.where(rho <= r, bright, bg).astype(np.float32)
+
+
+def plane(size: int = 33, thickness: float = 4.0, bright: float = -200,
+           bg: float = -900) -> np.ndarray:
+    z, _, _ = _grid(size)
+    return np.where(np.abs(z) <= thickness / 2, bright, bg).astype(np.float32)
+
+
+def saddle(size: int = 33, scale: float = 12.0, bright: float = -200,
+            bg: float = -900) -> np.ndarray:
+    z, y, x = _grid(size)
+    surf = (x ** 2 - y ** 2) / scale
+    return np.where(np.abs(z - surf) <= 2.0, bright, bg).astype(np.float32)
+
+
+SHAPE_PRIMITIVES = {"sphere": sphere, "cylinder": cylinder, "plane": plane, "saddle": saddle}

@@ -4,7 +4,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-pip install --upgrade --quiet qradiomics[rtstruct,prefect]
+# Canonical lab tracking endpoints (MLflow, Prefect). Caller can override.
+# shellcheck source=../_env.sh
+. ../_env.sh
+
+# Best-effort install: try full extras (dev), fall back to minimal (public).
+pip install --upgrade --quiet 'qradiomics[rtstruct,prefect,tracking]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics[rtstruct,prefect]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics[rtstruct]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics'
 
 EXECUTOR="${EXECUTOR:-nextflow}"
 

@@ -1,0 +1,49 @@
+# Prefect 3.x deployment definition for the LUNG1 pipeline.
+#
+# Registers `pipelines/lung1/prefect_flow.py:workflow` as a Prefect deployment
+# pointing at whatever server PREFECT_API_URL resolves to (see
+# pipelines/_env.sh). Users hit "Run" in the Prefect UI to launch a cohort
+# run with the parameters below; the flow tracks the
+# four pipeline stages (data → image → features → modeling) as coarse tasks
+# and registers canonical artifacts at the end of each stage.
+#
+# One-shot setup (do once per lab machine, after pipelines/_env.sh has set
+# PREFECT_API_URL):
+#
+#   prefect work-pool create qr-local --type process
+#   prefect worker start --pool qr-local        # in a tmux / nohup session
+#
+# Then register / refresh this deployment from this directory:
+#
+#   prefect deploy --all                         # picks up every entry below
+#   # — or, by name:
+#   prefect deploy --name lung1
+#
+# Run from the UI, or via:
+#
+#   prefect deployment run "tcia_to_ml_survival/lung1"
+
+name: qradiomics-lung1
+prefect-version: ">=3.0"
+
+deployments:
+  - name: lung1
+    entrypoint: prefect_flow.py:workflow
+    description: |
+      LUNG1 (NSCLC-Radiomics, Aerts 2014) — TCIA → Cox PH survival.
+
+      Phase A (data/image/features) runs via the qr CLI inside Prefect's
+      stage tasks. Phase B (modeling) logs params, CV metrics, and the
+      trained model to the lab MLflow server (set MLFLOW_TRACKING_URI
+      before triggering the run; pipelines/_env.sh already does this).
+    work_pool:
+      name: qr-local
+      work_queue_name: default
+    tags:
+      - qradiomics
+      - cohort:lung1
+      - cohort_type:tcia
+      - roi:GTV-1
+      - task:survival
+    parameters: {}
+    schedules: []

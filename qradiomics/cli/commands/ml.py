@@ -4,14 +4,22 @@ Atomic ML primitives that close the radiomics 4-stage data flow:
 
     data → image → features → **modeling**
 
-Two tasks supported out of the box:
-  * survival — Cox proportional hazards with k-fold cross-validated c-index
-  * classify — logistic regression with k-fold cross-validated ROC-AUC
+Subcommands:
+  * benchmark — canonical multi-model nested CV benchmark (LR, SVM, ET, RF,
+                GBM, MLP, XGB, LGBM by default; FLAML via --all-models; TPOT
+                opt-in only via --models TPOT — see qr ml benchmark --help
+                for the TPOT reproducibility caveat and --tpot-repeats /
+                --calibrate-threshold flags). Recommended entry point;
+                unifies `qr bench` and `qr ml classify` (both kept as
+                permanent backward-compatible aliases, not deprecated).
+  * classify  — backward-compatible alias of `qr ml benchmark` (same engine).
+  * train     — fit a single model (LR or Cox) + serialize to pkl for deployment
+  * predict   — apply a serialized model to a new feature CSV
+  * evaluate  — hold-out evaluation of a serialized model
 
-Both serialize the fitted estimator to a `.pkl` and emit a JSON metrics
-report. Larger / non-linear models (Random Survival Forest, XGBoost,
-SHAP-explained tree models) belong in `qradiomics_lab` (the private
-extension) — the public CLI keeps the canonical baseline.
+Use `qr ml benchmark` (or the `qr bench` / `qr ml classify` aliases) for
+model comparison.
+Use `qr ml train` when you need a serialized model artifact.
 """
 from __future__ import annotations
 
@@ -23,6 +31,15 @@ from pathlib import Path
 import click
 import numpy as np
 import pandas as pd
+
+from qradiomics.cli._tracking import (
+    log_artifact,
+    log_dict,
+    log_metrics,
+    log_params,
+    mlflow_run,
+)
+from qradiomics.cli.commands.bench import _shared_benchmark_options
 
 # lifelines emits a multi-kilobyte ConvergenceWarning per fold listing every
 # low-variance column. The information is real but it floods the CLI output —
@@ -93,11 +110,62 @@ def _select_for_survival(X_tr: pd.DataFrame, T_tr: pd.Series, E_tr: pd.Series,
     return list(Xk.columns)
 
 
+def _make_group_aware_splitter(df: pd.DataFrame, y_for_stratify, folds: int,
+                               group_col: str | None, stratify: bool):
+    """Return (splitter, split_args, n_effective, groups) for a CV loop.
+
+    Falls back to the original (non-grouped) splitter — same class, same
+    random_state=42 shuffle — whenever `group_col` is absent or every group
+    has exactly one row, so single-row-per-patient cohorts are unaffected.
+    Only switches to Group(Stratified)KFold when a group genuinely repeats
+    (multi-row-per-patient manifests), and clamps `folds` to the number of
+    unique groups so no fold ends up empty.
+    """
+    from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
+
+    n = len(df)
+    groups = df[group_col] if group_col and group_col in df.columns else None
+    if groups is not None and groups.nunique() < n:
+        n_units = int(groups.nunique())
+        folds = max(2, min(folds, n_units))
+        if stratify:
+            splitter = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=42)
+            split_args = (df.index, y_for_stratify, groups)
+        else:
+            splitter = GroupKFold(n_splits=folds, shuffle=True, random_state=42)
+            split_args = (df.index, y_for_stratify, groups)
+        return splitter, split_args, n_units, groups
+    folds = max(2, min(folds, n // 2))
+    if stratify:
+        splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
+        split_args = (df.index, y_for_stratify)
+    else:
+        splitter = KFold(n_splits=folds, shuffle=True, random_state=42)
+        split_args = (df.index,)
+    return splitter, split_args, n, None
+
+
+def _assert_no_group_leakage(groups, tr, te, fold_i, folds):
+    if groups is None:
+        return
+    tr_groups = set(groups.iloc[tr])
+    te_groups = set(groups.iloc[te])
+    overlap = tr_groups & te_groups
+    if overlap:
+        raise RuntimeError(
+            f"Group leakage detected in fold {fold_i}/{folds}: "
+            f"{len(overlap)} group(s) present in both train and test "
+            f"({sorted(overlap)[:5]}{'...' if len(overlap) > 5 else ''})"
+        )
+
+
 def _train_survival(df: pd.DataFrame, time_col: str, event_col: str, folds: int,
-                    top_features: int = 50, corr_threshold: float = 0.95):
+                    top_features: int = 50, corr_threshold: float = 0.95,
+                    group_col: str | None = "patient_id"):
     from lifelines import CoxPHFitter
     from lifelines.utils import concordance_index
-    from sklearn.model_selection import KFold
+
+    from qradiomics.analytics import survival_calibration as _surv_cal
 
     exclude = {"patient_id", "PatientID", time_col, event_col}
     feats = _select_feature_columns(df, exclude)
@@ -107,16 +175,25 @@ def _train_survival(df: pd.DataFrame, time_col: str, event_col: str, folds: int,
     E = df[event_col].astype(float)
     print(f"  [survival] events={int(E.sum())}/{len(E)}", flush=True)
 
-    # CV: select features INSIDE each fold to avoid leakage.
+    # CV: select features INSIDE each fold to avoid leakage. Also group-aware:
+    # when `group_col` repeats (e.g. multiple rows per patient_id), folds are
+    # split on unique groups so no group's rows land in both train and test.
     n = len(X)
-    folds = max(2, min(folds, n // 2))
+    splitter, split_args, n_units, groups = _make_group_aware_splitter(
+        df, None, folds, group_col, stratify=False)
+    folds = splitter.get_n_splits()
     fold_c: list = []
     fold_feature_counts: list[int] = []
+    oof_T: list[float] = []
+    oof_E: list[float] = []
+    oof_risk: list[float] = []
+    fold_ibs: list[float] = []
     if n >= 4:
-        print(f"  [survival] cross-validating ({folds}-fold, feature selection per fold)",
-              flush=True)
-        kf = KFold(n_splits=folds, shuffle=True, random_state=42)
-        for i, (tr, te) in enumerate(kf.split(X), 1):
+        unit_msg = f", {n_units} unique {group_col}" if groups is not None else ""
+        print(f"  [survival] cross-validating ({folds}-fold{unit_msg}, "
+              f"feature selection per fold)", flush=True)
+        for i, (tr, te) in enumerate(splitter.split(*split_args), 1):
+            _assert_no_group_leakage(groups, tr, te, i, folds)
             try:
                 X_tr_all = X.iloc[tr]
                 T_tr = T.iloc[tr]; E_tr = E.iloc[tr]
@@ -137,6 +214,15 @@ def _train_survival(df: pd.DataFrame, time_col: str, event_col: str, folds: int,
                 risk = cph.predict_partial_hazard(X_te)
                 c = concordance_index(T.iloc[te], -risk, E.iloc[te])
                 fold_c.append(c)
+                # Accumulate out-of-fold risk for a pooled c-index CI, and an
+                # Integrated Brier Score per fold (survival calibration).
+                oof_T.extend(np.asarray(T.iloc[te], dtype=float).tolist())
+                oof_E.extend(np.asarray(E.iloc[te], dtype=float).tolist())
+                oof_risk.extend(np.asarray(risk, dtype=float).tolist())
+                ibs = _surv_cal.fold_integrated_brier(
+                    cph, X_te, T_tr, E_tr, T.iloc[te], E.iloc[te])
+                if not np.isnan(ibs):
+                    fold_ibs.append(ibs)
                 print(f"    fold {i}/{folds}: c-index={c:.3f} "
                       f"(train={len(tr)}, test={len(te)}, k={len(chosen)})",
                       flush=True)
@@ -145,6 +231,18 @@ def _train_survival(df: pd.DataFrame, time_col: str, event_col: str, folds: int,
                 continue
     else:
         print(f"  [survival] n={n} < 4, skipping CV", flush=True)
+
+    # Discrimination uncertainty (C06) + survival calibration (C05).
+    c_ci_lo = c_ci_hi = None
+    ibs_mean = ibs_std = None
+    if fold_c:
+        _, c_ci_lo, c_ci_hi = _surv_cal.concordance_ci(oof_T, oof_risk, oof_E)
+        if fold_ibs:
+            ibs_mean = float(np.mean(fold_ibs))
+            ibs_std = float(np.std(fold_ibs))
+        ibs_msg = f"  IBS={ibs_mean:.3f}" if ibs_mean is not None else ""
+        print(f"  [survival] pooled c-index 95% CI = "
+              f"[{c_ci_lo:.3f}, {c_ci_hi:.3f}]{ibs_msg}", flush=True)
 
     # Final model: select on all data, then fit.
     print(f"  [survival] fitting final model on all {n} samples", flush=True)
@@ -162,11 +260,17 @@ def _train_survival(df: pd.DataFrame, time_col: str, event_col: str, folds: int,
         "folds": folds if fold_c else 0,
         "cv_c_index_mean": float(np.mean(fold_c)) if fold_c else None,
         "cv_c_index_std": float(np.std(fold_c)) if fold_c else None,
+        "cv_c_index_ci_lo": c_ci_lo,
+        "cv_c_index_ci_hi": c_ci_hi,
+        "cv_integrated_brier_mean": ibs_mean,
+        "cv_integrated_brier_std": ibs_std,
         "cv_c_index_folds": [float(c) for c in fold_c],
         "cv_features_per_fold": fold_feature_counts,
         "features": final_keep,
         "selection": {"corr_threshold": corr_threshold, "top_features": top_features,
                       "leakage_safe": True},
+        "group_col": group_col if groups is not None else None,
+        "n_groups": n_units if groups is not None else None,
         "note": ("CV skipped: n<4" if not fold_c else None),
     }
 
@@ -207,30 +311,48 @@ def _select_for_classify(X_tr: pd.DataFrame, y_tr: pd.Series,
 
 
 def _train_classify(df: pd.DataFrame, outcome: str, folds: int,
-                    top_features: int = 50, corr_threshold: float = 0.95):
+                    top_features: int = 50, corr_threshold: float = 0.95,
+                    group_col: str | None = "patient_id"):
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import roc_auc_score
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.metrics import classification_report, roc_auc_score
     from sklearn.preprocessing import StandardScaler
+
+    from qradiomics.analytics import classification_calibration as _clf_cal
+    from qradiomics.analytics import decision_curve as _dca
 
     exclude = {"patient_id", "PatientID", outcome}
     feats = _select_feature_columns(df, exclude)
     print(f"  [classify] {len(df)} rows, {len(feats)} candidate features", flush=True)
     X = df[feats].fillna(df[feats].median())
     y = df[outcome].astype(int)
-    pos = int(y.sum()); neg = len(y) - pos
-    print(f"  [classify] pos={pos}, neg={neg}", flush=True)
+    classes = sorted(y.unique().tolist())
+    n_classes = len(classes)
+    is_multiclass = n_classes > 2
+    if is_multiclass:
+        print(f"  [classify] multi-class: {n_classes} classes {classes}, "
+              f"counts={y.value_counts().sort_index().to_dict()}", flush=True)
+    else:
+        pos = int(y.sum()); neg = len(y) - pos
+        print(f"  [classify] pos={pos}, neg={neg}", flush=True)
 
-    # CV: select features INSIDE each fold to avoid leakage.
+    # CV: select features INSIDE each fold to avoid leakage. Also group-aware:
+    # when `group_col` repeats (e.g. multiple rows per patient_id), folds are
+    # split on unique groups so no group's rows land in both train and test.
     n = len(X)
-    folds = max(2, min(folds, n // 2))
+    splitter, split_args, n_units, groups = _make_group_aware_splitter(
+        df, y, folds, group_col, stratify=True)
+    folds = splitter.get_n_splits()
     fold_auc: list = []
     fold_feature_counts: list[int] = []
-    if n >= 4 and len(set(y)) > 1:
-        print(f"  [classify] cross-validating ({folds}-fold stratified, "
+    oof_y: list[float] = []
+    oof_p: list[float] = []       # binary: P(y=1) per row. multiclass: unused.
+    oof_pred: list = []           # multiclass only: argmax predicted label per row.
+    if n >= 4 and n_classes > 1:
+        unit_msg = f", {n_units} unique {group_col}" if groups is not None else ""
+        print(f"  [classify] cross-validating ({folds}-fold stratified{unit_msg}, "
               f"feature selection per fold)", flush=True)
-        skf = StratifiedKFold(n_splits=folds, shuffle=True, random_state=42)
-        for i, (tr, te) in enumerate(skf.split(X, y), 1):
+        for i, (tr, te) in enumerate(splitter.split(*split_args), 1):
+            _assert_no_group_leakage(groups, tr, te, i, folds)
             try:
                 X_tr_all = X.iloc[tr]
                 y_tr = y.iloc[tr]
@@ -245,8 +367,18 @@ def _train_classify(df: pd.DataFrame, outcome: str, folds: int,
                 scaler = StandardScaler().fit(X_tr)
                 clf = LogisticRegression(max_iter=500, C=0.1)
                 clf.fit(scaler.transform(X_tr), y_tr)
-                proba = clf.predict_proba(scaler.transform(X_te))[:, 1]
-                auc = roc_auc_score(y.iloc[te], proba)
+                proba_full = clf.predict_proba(scaler.transform(X_te))
+                y_te = y.iloc[te]
+                if is_multiclass:
+                    auc = roc_auc_score(y_te, proba_full, multi_class="ovr",
+                                        labels=clf.classes_)
+                    oof_y.extend(np.asarray(y_te, dtype=float).tolist())
+                    oof_pred.extend(clf.classes_[np.argmax(proba_full, axis=1)].tolist())
+                else:
+                    proba = proba_full[:, 1]
+                    auc = roc_auc_score(y_te, proba)
+                    oof_y.extend(np.asarray(y_te, dtype=float).tolist())
+                    oof_p.extend(np.asarray(proba, dtype=float).tolist())
                 fold_auc.append(auc)
                 print(f"    fold {i}/{folds}: AUC={auc:.3f} "
                       f"(train={len(tr)}, test={len(te)}, k={len(chosen)})",
@@ -257,7 +389,30 @@ def _train_classify(df: pd.DataFrame, outcome: str, folds: int,
     else:
         print(f"  [classify] n={n} or single-class, skipping CV", flush=True)
 
-    # Final model: select on all data, then fit.
+    # Discrimination uncertainty (C06) + calibration quality (C05) on the
+    # pooled out-of-fold predictions. Binary only — brier/ECE/decision-curve
+    # are defined for a single P(y=1) column; see classification_calibration
+    # module docstring. Multi-class gets a per-class classification_report
+    # instead (precision/recall/F1 per class + macro/weighted averages).
+    auc_ci_lo = auc_ci_hi = cv_brier = cv_ece = None
+    cv_decision_curve = None
+    cv_classification_report = None
+    if is_multiclass and fold_auc and oof_y:
+        cv_classification_report = classification_report(
+            oof_y, oof_pred, output_dict=True, zero_division=0)
+        print(f"  [classify] pooled OVR AUC (macro) over {len(oof_y)} "
+              f"out-of-fold rows: {np.mean(fold_auc):.3f}", flush=True)
+    elif fold_auc and oof_y:
+        _, auc_ci_lo, auc_ci_hi = _clf_cal.auc_ci(oof_y, oof_p)
+        cv_brier, cv_ece = _clf_cal.brier_ece(oof_y, oof_p)
+        cv_decision_curve = _dca.decision_curve_summary(oof_y, oof_p)
+        _useful = [t for t, d in cv_decision_curve.items() if d["beats_default"]]
+        print(f"  [classify] pooled AUC 95% CI = [{auc_ci_lo:.3f}, {auc_ci_hi:.3f}]  "
+              f"Brier={cv_brier:.3f} ECE={cv_ece:.3f}  "
+              f"net-benefit>default at thresholds {_useful or 'none'}", flush=True)
+
+    # Final model: select on all data, then fit. LogisticRegression handles
+    # multi-class natively (multinomial) — no change needed for the fit itself.
     print(f"  [classify] fitting final model on all {n} samples", flush=True)
     final_keep = _select_for_classify(X, y, top_features, corr_threshold)
     print(f"  [classify] final feature set: {len(final_keep)} features", flush=True)
@@ -269,15 +424,28 @@ def _train_classify(df: pd.DataFrame, outcome: str, folds: int,
         {
             "task": "classify",
             "n": int(n),
+            "n_classes": n_classes,
+            "classes": classes,
             "estimator": "LogisticRegression(C=0.1)",
             "folds": folds if fold_auc else 0,
+            # cv_auc_mean/std: binary ROC-AUC, or macro one-vs-rest AUC when
+            # n_classes > 2 — same field, so existing consumers (e.g.
+            # pipelines/*/run.sh summary printers) keep working unchanged.
             "cv_auc_mean": float(np.mean(fold_auc)) if fold_auc else None,
             "cv_auc_std": float(np.std(fold_auc)) if fold_auc else None,
+            "cv_auc_ci_lo": auc_ci_lo,
+            "cv_auc_ci_hi": auc_ci_hi,
+            "cv_brier": cv_brier,
+            "cv_ece": cv_ece,
+            "cv_decision_curve": cv_decision_curve,
+            "cv_classification_report": cv_classification_report,
             "cv_auc_folds": [float(a) for a in fold_auc],
             "cv_features_per_fold": fold_feature_counts,
             "features": final_keep,
             "selection": {"corr_threshold": corr_threshold,
                           "top_features": top_features, "leakage_safe": True},
+            "group_col": group_col if groups is not None else None,
+            "n_groups": n_units if groups is not None else None,
             "note": ("CV skipped: n<4 or single class" if not fold_auc else None),
         },
     )
@@ -303,34 +471,76 @@ def ml():
 @click.option("--corr-threshold", default=0.95, type=float,
               help="Drop one of each pair with |Pearson r| above this "
                    "(default 0.95). Set to 1.0 to disable.")
+@click.option("--group-col", default="patient_id", show_default=True,
+              help="Column identifying rows that must never split across "
+                   "train/test folds (e.g. multiple images or lesions per "
+                   "patient). CV falls back to plain K-fold, unchanged, "
+                   "when every value in this column is unique or the "
+                   "column is absent. Set to '' to disable grouping "
+                   "explicitly.")
 @click.option("--model", "model_path", required=True, type=click.Path(),
               help="Output path for the fitted model (.pkl)")
 @click.option("--metrics", "metrics_path", required=True, type=click.Path(),
               help="Output path for the CV metrics JSON")
+@click.option("--experiment", default=None,
+              help="MLflow experiment name (default: input file's parent dir; "
+                   "no-op when MLFLOW_TRACKING_URI is unset)")
+@click.option("--run-name", default=None,
+              help="MLflow run name (default: derived from input filename)")
 def train(input_path, task, outcome, time_col, folds, top_features,
-          corr_threshold, model_path, metrics_path):
+          corr_threshold, group_col, model_path, metrics_path, experiment, run_name):
     """Fit a CV'd survival or classification model on radiomics features."""
     click.echo(f"qr ml train: task={task} outcome={outcome} input={input_path}")
     click.echo(f"  feature reduction: corr<{corr_threshold}, top-{top_features}")
     df = pd.read_csv(input_path)
     click.echo(f"  loaded {len(df)} rows × {len(df.columns)} cols")
-    if task == "survival":
-        if outcome not in df.columns:
-            raise click.UsageError(f"Outcome column '{outcome}' not in input")
-        model, metrics = _train_survival(df, time_col, outcome, folds,
-                                         top_features, corr_threshold)
-    else:
-        if outcome not in df.columns:
-            raise click.UsageError(f"Outcome column '{outcome}' not in input")
-        model, metrics = _train_classify(df, outcome, folds,
-                                         top_features, corr_threshold)
+    group_col = group_col or None
 
-    Path(model_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-    Path(metrics_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+    input_p = Path(input_path)
+    exp_name = experiment or input_p.parent.name or "qr_ml"
+    rn = run_name or f"{input_p.stem}-{task}"
+
+    with mlflow_run(experiment=exp_name, run_name=rn) as run_id:
+        log_params({
+            "task": task,
+            "outcome": outcome,
+            "time_col": time_col if task == "survival" else "",
+            "folds": folds,
+            "top_features": top_features,
+            "corr_threshold": corr_threshold,
+            "group_col": group_col or "",
+            "input": input_p.name,
+            "n_rows": len(df),
+            "n_input_cols": len(df.columns),
+        })
+
+        if task == "survival":
+            if outcome not in df.columns:
+                raise click.UsageError(f"Outcome column '{outcome}' not in input")
+            model, metrics = _train_survival(df, time_col, outcome, folds,
+                                             top_features, corr_threshold, group_col)
+        else:
+            if outcome not in df.columns:
+                raise click.UsageError(f"Outcome column '{outcome}' not in input")
+            model, metrics = _train_classify(df, outcome, folds,
+                                             top_features, corr_threshold, group_col)
+
+        if run_id:
+            metrics["mlflow_run_id"] = run_id
+
+        Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(model_path, "wb") as f:
+            pickle.dump(model, f)
+        Path(metrics_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        scalar_metrics = {k: v for k, v in metrics.items()
+                          if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        scalar_metrics["n_selected_features"] = len(metrics.get("features", []))
+        log_metrics(scalar_metrics)
+        log_dict(metrics, "cv_metrics.json")
+        log_artifact(model_path)
 
     click.echo(f"Model -> {model_path}")
     click.echo(f"Metrics -> {metrics_path}")
@@ -340,6 +550,8 @@ def train(input_path, task, outcome, time_col, folds, top_features,
     else:
         click.echo(f"  CV AUC: {metrics['cv_auc_mean']:.3f} ± "
                    f"{metrics['cv_auc_std']:.3f}")
+    if metrics.get("mlflow_run_id"):
+        click.echo(f"  MLflow run: {metrics['mlflow_run_id']}")
 
 
 @ml.command("predict")
@@ -364,8 +576,14 @@ def predict(input_path, model, task, output):
     else:
         feats = m["features"]
         X = df[feats].fillna(df[feats].median())
-        proba = m["classifier"].predict_proba(m["scaler"].transform(X))[:, 1]
-        out = pd.DataFrame({"patient_id": df["patient_id"], "proba": proba})
+        clf = m["classifier"]
+        proba_full = clf.predict_proba(m["scaler"].transform(X))
+        if len(clf.classes_) > 2:
+            out = pd.DataFrame(proba_full, columns=[f"proba_{c}" for c in clf.classes_])
+            out.insert(0, "patient_id", df["patient_id"].values)
+            out["pred_class"] = clf.classes_[np.argmax(proba_full, axis=1)]
+        else:
+            out = pd.DataFrame({"patient_id": df["patient_id"], "proba": proba_full[:, 1]})
 
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(output, index=False)
@@ -380,7 +598,13 @@ def predict(input_path, model, task, output):
 @click.option("--time-col", default="OS_months")
 @click.option("--report", required=True, type=click.Path(),
               help="Output evaluation report JSON")
-def evaluate(input_path, model, task, outcome, time_col, report):
+@click.option("--metrics", "train_metrics_path", default=None, type=click.Path(),
+              help="Train-time cv_metrics.json to attach holdout metrics to the "
+                   "same MLflow run (default: <model>.json sibling)")
+@click.option("--experiment", default=None,
+              help="MLflow experiment name (used only when no prior train run is found)")
+def evaluate(input_path, model, task, outcome, time_col, report,
+             train_metrics_path, experiment):
     """Apply a trained model and compute hold-out performance metrics."""
     click.echo(f"qr ml evaluate: task={task} model={model}")
     df = pd.read_csv(input_path)
@@ -388,24 +612,170 @@ def evaluate(input_path, model, task, outcome, time_col, report):
     with open(model, "rb") as f:
         m = pickle.load(f)
 
-    if task == "survival":
-        from lifelines.utils import concordance_index
+    train_run_id = None
+    if train_metrics_path is None:
+        guess = Path(model).with_suffix(".json")
+        if guess.exists():
+            train_metrics_path = str(guess)
+    if train_metrics_path and Path(train_metrics_path).exists():
+        try:
+            train_run_id = json.loads(Path(train_metrics_path).read_text()).get("mlflow_run_id")
+        except (json.JSONDecodeError, OSError):
+            train_run_id = None
 
-        feats = m.summary.index.tolist()
-        X = df[feats].fillna(df[feats].median())
-        risk = m.predict_partial_hazard(X)
-        c = concordance_index(df[time_col], -risk, df[outcome])
-        result = {"task": "survival", "c_index": float(c), "n": int(len(df))}
-    else:
-        from sklearn.metrics import roc_auc_score
+    input_p = Path(input_path)
+    exp_name = experiment or input_p.parent.name or "qr_ml"
+    rn = f"{input_p.stem}-{task}-eval"
 
-        feats = m["features"]
-        X = df[feats].fillna(df[feats].median())
-        proba = m["classifier"].predict_proba(m["scaler"].transform(X))[:, 1]
-        auc = roc_auc_score(df[outcome], proba)
-        result = {"task": "classify", "auc": float(auc), "n": int(len(df))}
+    with mlflow_run(experiment=exp_name, run_name=rn, run_id=train_run_id) as run_id:
+        if task == "survival":
+            from lifelines.utils import concordance_index
 
-    Path(report).parent.mkdir(parents=True, exist_ok=True)
-    with open(report, "w") as f:
-        json.dump(result, f, indent=2)
+            feats = m.summary.index.tolist()
+            X = df[feats].fillna(df[feats].median())
+            risk = m.predict_partial_hazard(X)
+            c = concordance_index(df[time_col], -risk, df[outcome])
+            result = {"task": "survival", "c_index": float(c), "n": int(len(df))}
+            log_metrics({"holdout_c_index": c, "holdout_n": len(df)})
+        else:
+            from sklearn.metrics import classification_report, roc_auc_score
+
+            feats = m["features"]
+            X = df[feats].fillna(df[feats].median())
+            clf = m["classifier"]
+            proba_full = clf.predict_proba(m["scaler"].transform(X))
+            y_true = df[outcome]
+            if len(clf.classes_) > 2:
+                auc = roc_auc_score(y_true, proba_full, multi_class="ovr",
+                                    labels=clf.classes_)
+                pred = clf.classes_[np.argmax(proba_full, axis=1)]
+                result = {
+                    "task": "classify", "n_classes": len(clf.classes_),
+                    "auc": float(auc), "n": int(len(df)),
+                    "classification_report": classification_report(
+                        y_true, pred, output_dict=True, zero_division=0),
+                }
+                log_metrics({"holdout_auc": auc, "holdout_n": len(df)})
+            else:
+                proba = proba_full[:, 1]
+                auc = roc_auc_score(y_true, proba)
+                result = {"task": "classify", "auc": float(auc), "n": int(len(df))}
+                log_metrics({"holdout_auc": auc, "holdout_n": len(df)})
+
+        if run_id:
+            result["mlflow_run_id"] = run_id
+            log_dict(result, "evaluation.json")
+
+        Path(report).parent.mkdir(parents=True, exist_ok=True)
+        with open(report, "w") as f:
+            json.dump(result, f, indent=2)
+        log_artifact(report)
+
     click.echo(json.dumps(result))
+
+
+@ml.command("classify")
+@_shared_benchmark_options
+@click.option("--corr-threshold", default=0.95, type=float, show_default=True,
+              help="Drop one of each pair with |Pearson r| above this before training.")
+@click.option("--output-dir", "-d", default="results/classify", show_default=True,
+              type=click.Path(), help="Output directory for CSV + HTML report.")
+def classify(input_path, outcome, models, all_models, cv, inner_cv, seed,
+             n_jobs, corr_threshold, hpo, ext_path, tpot_repeats,
+             calibrate_threshold, output_dir, exclude):
+    """Multi-model classification benchmark with correlation-based feature pre-filter.
+
+    Runs nested CV over 8 classifiers by default (LR, SVM, ExtraTrees, RF, GBM,
+    MLP, XGB, LGBM) and reports OOF ROC-AUC. Use --all-models to add FLAML.
+    TPOT is opt-in only (--models TPOT) — never pulled in by --all-models,
+    both for cost and because its genetic search is not reproducible from a
+    single run (its CV fold-mean/std therefore mixes real fold variance with
+    search noise); use --tpot-repeats on --external-test for a stable
+    mean +/- std instead of trusting one run. --calibrate-threshold applies
+    to any model, not just TPOT.
+
+    See also: qr bench (same benchmark without the feature pre-filter step)
+    and qr ml benchmark — the recommended canonical entry point that unifies
+    this command with qr bench on one engine. This command remains a
+    permanent backward-compatible alias, not deprecated.
+    """
+    from qradiomics.cli.commands.bench import _run_benchmark
+
+    df = pd.read_csv(input_path)
+    _run_benchmark(
+        df, outcome,
+        label="classify",
+        output_dir=output_dir,
+        csv_prefix="classify",
+        models=models,
+        all_models=all_models,
+        cv=cv, inner_cv=inner_cv,
+        seed=seed, n_jobs=n_jobs,
+        # `classify` never exposed --optuna-trials; preserve its historical
+        # reliance on cross_val_benchmark's own default (20) rather than
+        # bench's --optuna-trials default (30).
+        hpo=hpo, optuna_trials=20,
+        ext_path=ext_path,
+        tpot_repeats=tpot_repeats,
+        calibrate_threshold=calibrate_threshold,
+        exclude=exclude,
+        extra_exclude=("patient_id", "PatientID"),
+        fillna_median=True,
+        restrict_train_to_shared=True,
+        corr_threshold=corr_threshold,
+        features_echo_label="raw_features",
+        best_label="Best",
+    )
+
+
+@ml.command("benchmark")
+@_shared_benchmark_options
+@click.option("--corr-threshold", default=0.95, type=float, show_default=True,
+              help="Drop one of each pair with |Pearson r| above this before training.")
+@click.option("--optuna-trials", default=30, show_default=True,
+              help="Optuna trial count (only when --hpo optuna).")
+@click.option("--output-dir", "-d", default="results/benchmark", show_default=True,
+              type=click.Path(), help="Output directory for CSV + HTML report.")
+def benchmark(input_path, outcome, models, all_models, cv, inner_cv, seed,
+              n_jobs, corr_threshold, hpo, optuna_trials, ext_path,
+              tpot_repeats, calibrate_threshold, output_dir, exclude):
+    """Canonical multi-model classification benchmark (recommended entry point).
+
+    Unifies `qr bench` and `qr ml classify` on one engine
+    (qradiomics.cli.commands.bench._run_benchmark): nested CV over 8
+    classifiers by default (LR, SVM, ExtraTrees, RF, GBM, MLP, XGB, LGBM;
+    --all-models adds FLAML; TPOT is opt-in only via --models TPOT), an
+    optional correlation-based feature pre-filter (--corr-threshold, as in
+    `qr ml classify`), optional external-test refit/scoring with TPOT-repeat
+    aggregation and Youden's-J threshold calibration (--tpot-repeats /
+    --calibrate-threshold, as in both `qr bench` and `qr ml classify`), and
+    an HTML report.
+
+    `qr bench` and `qr ml classify` remain permanent backward-compatible
+    aliases of this same engine — neither is deprecated.
+    """
+    from qradiomics.cli.commands.bench import _run_benchmark
+
+    df = pd.read_csv(input_path)
+    _run_benchmark(
+        df, outcome,
+        label="ml benchmark",
+        output_dir=output_dir,
+        csv_prefix="benchmark",
+        models=models,
+        all_models=all_models,
+        cv=cv, inner_cv=inner_cv,
+        seed=seed, n_jobs=n_jobs,
+        hpo=hpo, optuna_trials=optuna_trials,
+        ext_path=ext_path,
+        tpot_repeats=tpot_repeats,
+        calibrate_threshold=calibrate_threshold,
+        exclude=exclude,
+        extra_exclude=("patient_id", "PatientID"),
+        fillna_median=True,
+        restrict_train_to_shared=True,
+        corr_threshold=corr_threshold,
+        features_echo_label="raw_features",
+        best_label="Best",
+        title_prefix="qr ml benchmark",
+    )
