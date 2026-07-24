@@ -97,6 +97,12 @@ def extract(manifest, pattern, output, jobs, bin_width, engine):
         fx = tmpl.feature_extraction
         extraction_settings = dict(fx.settings or {})
         extraction_settings["image_types"] = list(fx.image_types or ["Original"])
+        # Pass the pattern's declared feature classes through to the pyradiomics
+        # engine so a restrictive pattern actually limits extraction (previously
+        # printed but ignored — every class was always emitted). Only for
+        # pyradiomics; pysera uses `categories` below.
+        if fx.feature_classes:
+            extraction_settings["feature_classes"] = list(fx.feature_classes)
         click.echo(
             f"Using pattern '{pattern}': image_types={extraction_settings['image_types']}, "
             f"feature_classes={list(fx.feature_classes)}"

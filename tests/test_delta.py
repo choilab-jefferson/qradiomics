@@ -97,3 +97,65 @@ class TestTrend:
         t = compute_trend(df, time_index_col="relative_day")
         # Should produce some result without crashing
         assert len(t) >= 1
+
+
+class TestDeltaCLI:
+    """Regression tests for `qr delta` — the command used to crash immediately
+    because the CLI built DeltaPair(name=, minuend=, subtrahend=) while the core
+    dataclass is DeltaPair(early, late)."""
+
+    def _write(self, tmp_path):
+        f = tmp_path / "features.csv"
+        f.write_text(
+            "patient_id,roi_name,timepoint,relative_day,f1,f2\n"
+            "A,GTV,baseline,0,10,100\n"
+            "A,GTV,week4,28,15,90\n"
+            "B,GTV,baseline,0,20,200\n"
+            "B,GTV,week4,28,26,180\n"
+        )
+        return f
+
+    def test_delta_pair_and_trend(self, tmp_path):
+        from click.testing import CliRunner
+
+        from qradiomics.cli.commands.delta import delta
+
+        f = self._write(tmp_path)
+        out = tmp_path / "delta.csv"
+        res = CliRunner().invoke(
+            delta,
+            ["-f", str(f), "--pair", "w4=week4-baseline",
+             "--with-trend", "--time-col", "relative_day", "-o", str(out)],
+        )
+        assert res.exit_code == 0, res.output
+        d = pd.read_csv(out)
+        # one row per (patient, roi), named delta columns, trend slopes, and
+        # crucially NO delta/slope of the relative_day time axis.
+        assert len(d) == 2
+        assert set(d["patient_id"]) == {"A", "B"}
+        assert {"w4_f1", "w4_f2", "slope_f1", "slope_f2"} <= set(d.columns)
+        assert not any("relative_day" in c for c in d.columns)
+        row_a = d[d["patient_id"] == "A"].iloc[0]
+        assert row_a["w4_f1"] == 5.0            # 15 − 10
+        assert row_a["w4_f2"] == -10.0          # 90 − 100
+        assert abs(row_a["slope_f1"] - 5.0 / 28.0) < 1e-9
+
+    def test_delta_without_roi_name(self, tmp_path):
+        """roi_name is optional — keying should fall back to patient_id."""
+        from click.testing import CliRunner
+
+        from qradiomics.cli.commands.delta import delta
+
+        f = tmp_path / "f.csv"
+        f.write_text(
+            "patient_id,timepoint,f1\n"
+            "A,baseline,10\nA,week4,15\n"
+        )
+        out = tmp_path / "d.csv"
+        res = CliRunner().invoke(
+            delta, ["-f", str(f), "--pair", "w4=week4-baseline", "-o", str(out)]
+        )
+        assert res.exit_code == 0, res.output
+        d = pd.read_csv(out)
+        assert list(d["patient_id"]) == ["A"]
+        assert d["w4_f1"].iloc[0] == 5.0

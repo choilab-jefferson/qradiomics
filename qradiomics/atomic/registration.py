@@ -153,7 +153,14 @@ def _init_transform(
     if kind == "rigid":
         return centred
     if kind == "affine":
+        # Seed the affine from the centered Euler initializer: the rotation
+        # centre lives in GetFixedParameters()[:3] (NOT GetParameters()[3:6],
+        # which is the translation), and the centre-of-geometry alignment the
+        # initializer computed is its translation — carry both over so the
+        # affine starts from the same pose the rigid path would, rather than
+        # from an identity with an arbitrary centre.
         affine = sitk.AffineTransform(fixed.GetDimension())
-        affine.SetCenter(centred.GetParameters()[3:6])
+        affine.SetCenter(centred.GetFixedParameters()[:3])
+        affine.SetTranslation(centred.GetParameters()[3:6])
         return affine
     raise ValueError(f"Unknown transform kind {kind!r}; expected 'rigid' or 'affine'.")

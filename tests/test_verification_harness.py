@@ -16,6 +16,23 @@ class TestCompareFeatureDicts:
         diffs = compare_feature_dicts(a, dict(a))
         assert diffs == []
 
+    def test_nan_vs_finite_is_flagged(self):
+        """A candidate that emits NaN where the reference is finite (or the
+        reverse) must be reported — `abs_err > tol` alone silently missed it
+        because any comparison with NaN is False."""
+        diffs = compare_feature_dicts(
+            {"a": 1.0, "b": float("nan"), "c": 5.0},
+            {"a": 1.0, "b": 5.0, "c": float("nan")},
+        )
+        flagged = {row[0] for row in diffs}
+        assert flagged == {"b", "c"}
+
+    def test_matching_nan_is_parity(self):
+        assert compare_feature_dicts({"x": float("nan")}, {"x": float("nan")}) == []
+
+    def test_matching_inf_is_parity(self):
+        assert compare_feature_dicts({"x": float("inf")}, {"x": float("inf")}) == []
+
     def test_diff_above_tolerance_caught(self):
         a = {"f1": 1.0}
         b = {"f1": 1.0 + 1e-6}
