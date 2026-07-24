@@ -87,8 +87,13 @@ def _series_is_ct(dcm_path: Path) -> bool:
 def _uid_to_z(dicom_series_dir: Path) -> dict[str, int]:
     """Return `{SOPInstanceUID: z_index}` (0-indexed) for the CT series.
 
-    Slice ordering follows ImagePositionPatient[2] descending (head→foot),
-    matching the MATLAB code that sorts the same way.
+    The z-index MUST match how the CT volume itself is indexed, because the
+    rasterised mask is written with ``CopyInformation(ct)`` and consumed
+    alongside the CT. The CT is built by :func:`load_dicom_series` (SimpleITK
+    ``ImageSeriesReader``), which orders slices by ImagePositionPatient[2]
+    **ascending** — i.e. numpy z-index 0 is the smallest position. So sort
+    ascending here too. (The original port sorted descending, following the
+    MATLAB code, which mirrored every nodule along z onto the wrong slices.)
     """
     import pydicom
 
@@ -107,8 +112,8 @@ def _uid_to_z(dicom_series_dir: Path) -> dict[str, int]:
         except (TypeError, ValueError, IndexError):
             continue
         rows.append((str(sop), z))
-    # Sort by z descending; MATLAB code sorts `if ipp(3) < jpp(3)` swap → descending.
-    rows.sort(key=lambda r: -r[1])
+    # Ascending z to match SimpleITK's ImageSeriesReader volume ordering.
+    rows.sort(key=lambda r: r[1])
     return {uid: idx for idx, (uid, _z) in enumerate(rows)}
 
 

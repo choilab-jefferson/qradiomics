@@ -73,13 +73,16 @@ class RadiomicsExtractor:
 
         extractor_params.update(extraction_settings or {})
 
+        # image_types / feature_classes are qradiomics-level selectors, not
+        # PyRadiomics constructor kwargs — pop them before building the extractor
+        # and apply them explicitly afterwards.
         image_types = extractor_params.pop("image_types", ["Original"])
+        feature_classes = extractor_params.pop("feature_classes", None)
 
         try:
-            extractor = featureextractor.RadiomicsFeatureExtractor(**extractor_params)
-            extractor.disableAllImageTypes()
-            for img_type in image_types:
-                extractor.enableImageTypeByName(img_type)
+            extractor = _configure_extractor(
+                featureextractor, extractor_params, image_types, feature_classes
+            )
         except Exception as e:
             logger.error("Failed to initialize PyRadiomics extractor: %s", e)
             return {
@@ -133,7 +136,7 @@ class RadiomicsExtractor:
             # workers each instantiate their own through _worker_init so the
             # extractor doesn't get shared across processes (avoids GIL +
             # PyRadiomics' internal caches racing).
-            init_args = (extractor_params, image_types)
+            init_args = (extractor_params, image_types, feature_classes)
             with ProcessPoolExecutor(
                 max_workers=jobs, initializer=_worker_init, initargs=init_args
             ) as ex:
@@ -179,9 +182,15 @@ class RadiomicsExtractor:
 
         features_path = job_dir / "features.csv"
         if all_features:
-            fieldnames = list(all_features[0].keys())
+            # Header is the UNION of every row's keys, not just the first
+            # patient's: PyRadiomics can emit a different key set per case (e.g. a
+            # degenerate/single-slice mask drops some 3D shape features), and a
+            # first-patient-only header makes csv.DictWriter raise on the extras
+            # (default extrasaction="raise"), discarding every already-extracted
+            # result at the final write.
+            fieldnames = union_fieldnames(all_features)
             with open(features_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
                 writer.writeheader()
                 writer.writerows(all_features)
 
@@ -211,6 +220,23 @@ class RadiomicsExtractor:
         }
 
 
+def union_fieldnames(rows: List[Dict[str, Any]]) -> List[str]:
+    """Ordered union of the keys across ``rows``.
+
+    Preserves the first row's key order and appends any keys first seen in later
+    rows. Used to build a CSV header that tolerates a heterogeneous key set
+    across patients (see the note in ``RadiomicsExtractor.run_extraction``).
+    """
+    fieldnames: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for k in row:
+            if k not in seen:
+                seen.add(k)
+                fieldnames.append(k)
+    return fieldnames
+
+
 def get_radiomics_extractor() -> RadiomicsExtractor:
     """Factory for a RadiomicsExtractor instance (lightweight).
 
@@ -227,16 +253,43 @@ def get_radiomics_extractor() -> RadiomicsExtractor:
 _WORKER_EXTRACTOR: Optional[Any] = None  # one per process
 
 
-def _worker_init(extractor_params: Dict[str, Any], image_types: List[str]) -> None:
-    """ProcessPoolExecutor initializer — build a per-process extractor once."""
-    global _WORKER_EXTRACTOR
-    from radiomics import featureextractor  # type: ignore
+def _configure_extractor(
+    featureextractor: Any,
+    extractor_params: Dict[str, Any],
+    image_types: List[str],
+    feature_classes: Optional[List[str]] = None,
+) -> Any:
+    """Build a PyRadiomics extractor with the requested image types + classes.
 
+    Only the listed image types are enabled. ``feature_classes`` (a pattern's
+    ``feature_classes``) restricts extraction to those PyRadiomics classes when
+    given; when None, PyRadiomics' default (all classes enabled) is kept. This is
+    what makes ``qr extract -p <pattern>`` actually honour the pattern's declared
+    feature classes instead of always emitting every class.
+    """
     fx = featureextractor.RadiomicsFeatureExtractor(**extractor_params)
     fx.disableAllImageTypes()
     for img_type in image_types:
         fx.enableImageTypeByName(img_type)
-    _WORKER_EXTRACTOR = fx
+    if feature_classes:
+        fx.disableAllFeatures()
+        for cls in feature_classes:
+            fx.enableFeatureClassByName(cls)
+    return fx
+
+
+def _worker_init(
+    extractor_params: Dict[str, Any],
+    image_types: List[str],
+    feature_classes: Optional[List[str]] = None,
+) -> None:
+    """ProcessPoolExecutor initializer — build a per-process extractor once."""
+    global _WORKER_EXTRACTOR
+    from radiomics import featureextractor  # type: ignore
+
+    _WORKER_EXTRACTOR = _configure_extractor(
+        featureextractor, extractor_params, image_types, feature_classes
+    )
 
 
 def _extract_one_worker(patient_id: str, image_path: str, mask_path: str) -> Dict[str, Any]:

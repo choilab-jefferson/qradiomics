@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 METADATA = {
@@ -64,10 +64,18 @@ def _select_features(df: pd.DataFrame, mode: str) -> list[str]:
     return _select_features(df, "radiomics") + _select_features(df, "spic")
 
 
-def _cv_auc(X, y, n_splits=5, top_k=50, seed=42):
-    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+def _cv_auc(X, y, groups=None, n_splits=5, top_k=50, seed=42):
+    # Group folds by patient when pids are given: LIDC-PM has multiple nodules
+    # per patient, so a plain StratifiedKFold leaks a patient across train/test
+    # and inflates the AUC. Fall back only when there are too few patients.
+    if groups is not None and len(set(groups)) >= n_splits:
+        kf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        splits = list(kf.split(X, y, groups))
+    else:
+        kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        splits = list(kf.split(X, y))
     aucs = []
-    for tr, te in kf.split(X, y):
+    for tr, te in splits:
         Xtr, Xte = X.iloc[tr], X.iloc[te]; ytr, yte = y.iloc[tr], y.iloc[te]
         med = Xtr.median(); Xtr = Xtr.fillna(med); Xte = Xte.fillna(med)
         var_mask = Xtr.var() > 1e-10
@@ -183,7 +191,7 @@ def main() -> int:
                          ("radiomics + spiculation",  "combined")):
         cols = _select_features(lidc_pm, mode)
         if not cols or len(lidc_pm) < 25: continue
-        auc, std = _cv_auc(lidc_pm[cols], lidc_pm["y"])
+        auc, std = _cv_auc(lidc_pm[cols], lidc_pm["y"], groups=lidc_pm["pid"].to_numpy())
         out[f"lidc_pm_{mode}"] = {"auc": auc, "std": std,
                                    "n": len(lidc_pm), "n_feat": len(cols)}
         lines.append(f"\n## LIDC-PM proxy — {label}")
