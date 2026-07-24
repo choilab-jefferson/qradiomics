@@ -58,7 +58,7 @@ class TestCompareImagePair:
         assert diffs["mask"].is_identical
 
 
-_HEARTCB = Path("/data/users/wxc151/HeartToxicity/HeartCB")
+_HEARTCB = Path("/data/datasets/heart-toxicity-heartcb/nrrd")
 
 
 @pytest.mark.skipif(

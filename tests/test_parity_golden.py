@@ -31,7 +31,7 @@ def golden():
 
 
 @pytest.mark.skipif(
-    not Path("/data/users/wxc151/HeartToxicity/HeartCB/HeartB10").exists(),
+    not Path("/data/datasets/heart-toxicity-heartcb/nrrd/HeartB10").exists(),
     reason="HeartB10 cohort data absent — parity check skipped",
 )
 class TestJLRParityGolden:

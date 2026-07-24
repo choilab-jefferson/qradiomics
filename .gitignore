@@ -2,61 +2,204 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
 
 # Distribution / packaging
 .Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
+.installed.cfg
 *.egg
 MANIFEST
+radiomics_cli.egg-info/*
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
 
 # Environments
 .env
 .venv
-venv/
 env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Test / coverage
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-coverage.xml
-junit.xml/
-
-# Type checkers
+# mypy
 .mypy_cache/
 .dmypy.json
+dmypy.json
 
-# IDE / OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+# Node.js
+node_modules/
+frontend/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Editor swap files
+# Build outputs
+frontend/build
+build/
+dist/*
+generated_pipelines/
+
+# Logs
+*.log
+*.nextflow*
+
+# Editor files
 *.swp
 *.swo
 *~
+.aider*
 
-# Logs and runtime artifacts
+# Project specific
+# Ignore all artifacts (large files, runtime data)
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/workflows/
+artifacts/workflows/*
+!artifacts/workflows/.gitkeep
+# Track dataset scripts and workflow files (not data files)
+!artifacts/uploads/
+artifacts/uploads/*
+!artifacts/uploads/datasets/
+artifacts/uploads/datasets/*
+!artifacts/uploads/datasets/*/
+!artifacts/uploads/datasets/*/workflow.sh
+!artifacts/uploads/datasets/*/scripts/
+!artifacts/uploads/datasets/*/scripts/*.py
+__marimo__/*
+
+# Security reports
+bandit-report.json
+bandit-security-report.json
+safety-report.json
+semgrep-report.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Nextflow
+work/
+.nextflow/
+.nextflow.log*
+
+# Radiomics tools binaries (large files - keep local only)
+backend/tools/bin/
+
+# MCP logs
+mcp_server.log
+mcp_errors_*.log
+
+# IKB/Claude
+.claude/
+CLAUDE.local.md
+
+# IDE
+.vscode/
+.idea/
+
+logs
 *.log
+*.csv
+
+# Symlinked external repos
+HIVE
+intelligent_kb
+
+# Symlinks to related projects
+backend/hive
 *.pid
 
-# Project artifacts (analysis outputs — not source)
-artifacts/
+# Temporary debug directories
+e2e_debug/
 
-# Pipeline run outputs (DICOM, NRRD, features, models — large)
-pipelines/runs/
-pipelines/*/runs/
+# Security scan reports
+bandit-report.json
 
-# Per-cohort downloaded clinical CSVs (PHI risk + cohort-specific)
-pipelines/*/clinical/clinical.csv
+# AI tool caches (aider, opencode, serena, sisyphus, specify)
+.aider*
+.opencode/
+.serena/
+.sisyphus/
+.specify/
 
+# Runtime logs
+backend.log
+server.log
+uvicorn_*.log
+prefect_server.log
+
+# Worker logs
+hive_*.log
+k8s_*.log
+worker*.log
+worker*.pid
+hive_worker_retry.log
+
+# Generated pipeline outputs
+generated_pipelines/
+
+# Skill zip packages
+*.zip
+
+# Private data analysis (TJU, HeartCB)
+docs/analysis/
+scripts/analyze_features.*
+scripts/merge_clinical_features.py
+scripts/feature_selection.sh
+scripts/fix_heartcb_csv.py
+scripts/fix_tju_csv.py
+
+# Superpowers plan files (local only)
+docs/superpowers/plans/
+
+# ACRIN clinical data (raw downloads — not tracked)
+artifacts/uploads/datasets/ACRIN/data/clinical_set*.zip
+artifacts/uploads/datasets/ACRIN/data/set1/
+artifacts/uploads/datasets/ACRIN/data/set2/
+
+# Ignore generated artifacts in code/artifacts/
+code/artifacts/
+
+# PHI guards (mirrored from qradiomics-public 2026-05-18)
 # Anonymised clinical outputs of pipelines/heart_local/extract_clinical.py.
 # Even with PHI columns dropped + PatientIDs mapped to AnonPatient_NNNN,
 # these still encode patient-level outcomes from internal data and are
@@ -66,10 +209,29 @@ pipelines/heart_local/clinical_anon/
 **/anonymization_map.csv
 **/pid_map.csv
 
-# Local scratch wiki — the published wiki lives in the separate GitHub
-# wiki repo (qradiomics.wiki.git), never inside this source tree.
-wiki/
+# pytest junit output (must not be tracked — created at test time)
+**/junit.xml
+**/junit.xml/
+nf-reports/
+pipelines/*/runs/
 
-# Raw downloaded imaging cohorts (DICOM/NRRD per patient) — large + PHI risk,
-# never source. e.g. lung1_raw/, <cohort>_raw/.
-*_raw/
+# Antigravity CLI tooling scratch
+.antigravitycli/
+
+# Personal cardiotox analysis/report scratch — never commit (some contain Korean).
+# Kept in a local-only scratch directory outside the repo. Stripped at MR time.
+/analyze_fp_fn.py
+/analyze_fp_fn_modality.py
+/build_endtoend_report.py
+/build_final_sweep_report.py
+/build_korean_report.py
+/control_ct_contribution.py
+/feature_type_link.py
+/feature_type_link_v2.py
+/per_type_bootstrap.py
+/per_type_modality.py
+/run_multimodal_sweep.py
+/run_pipeline_sweep.py
+/run_multiseed_oof.py
+# Analysis outputs (PHI-derived) — never commit.
+/results/

@@ -1,57 +1,22 @@
-"""Smoke + sanity tests for the 2014 AHSN pipeline (hessian / detection / ahsn / wall_elim)."""
+"""Smoke + sanity tests for AHSN (2014) and SNoH (2026)."""
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from qradiomics.shape import (
-    AHSNConfig,
-    ahsn,
-    dot_value,
-    make_scales,
+# This test file imports symbols from the qradiomics_private overlay
+# (SNoH, spiculation_from_voxel_native). Skip the whole module in public-only
+# installs where the overlay is not present.
+pytest.importorskip("qradiomics_private", reason="requires qradiomics_private overlay")
+
+from qradiomics.shape import (  # type: ignore[import-not-found]
+    AHSNConfig, SNoHConfig, ahsn, snoh, dot_value, make_scales,
     surface_elements,
-    wall_eliminate,
 )
+from qradiomics.shape.phantoms import sphere, cylinder, plane, saddle  # type: ignore
 
 
-# ---- Synthetic volumes (analytic shapes for which AHSN behaviour is known) -------
-
-
-def _grid(size: int = 33) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    c = (size - 1) / 2
-    z, y, x = np.indices((size, size, size), dtype=np.float32)
-    return z - c, y - c, x - c
-
-
-def sphere(size: int = 33, r: float = 8.0, bright: float = -200, bg: float = -900) -> np.ndarray:
-    z, y, x = _grid(size)
-    rho = np.sqrt(z**2 + y**2 + x**2)
-    return np.where(rho <= r, bright, bg).astype(np.float32)
-
-
-def cylinder(size: int = 33, r: float = 4.0, bright: float = -200, bg: float = -900) -> np.ndarray:
-    _, y, x = _grid(size)
-    rho = np.sqrt(y**2 + x**2)
-    return np.where(rho <= r, bright, bg).astype(np.float32)
-
-
-def plane(
-    size: int = 33, thickness: float = 4.0, bright: float = -200, bg: float = -900
-) -> np.ndarray:
-    z, _, _ = _grid(size)
-    return np.where(np.abs(z) <= thickness / 2, bright, bg).astype(np.float32)
-
-
-def saddle(
-    size: int = 33, scale: float = 12.0, bright: float = -200, bg: float = -900
-) -> np.ndarray:
-    z, y, x = _grid(size)
-    surf = (x**2 - y**2) / scale
-    return np.where(np.abs(z - surf) <= 2.0, bright, bg).astype(np.float32)
-
-
-# ---- AHSN descriptor (paper §2.3.1) -------------------------------------------------
-
+# ---- AHSN (2014) ----------------------------------------------------------
 
 def test_ahsn_dim_default():
     desc = ahsn(sphere())
@@ -65,8 +30,38 @@ def test_ahsn_normalization():
     assert np.isclose(desc[10:].sum(), 1.0, atol=1e-5)
 
 
-# ---- Dot enhancement filter (paper §2.2.2) -----------------------------------------
+# ---- SNoH (2026) ----------------------------------------------------------
 
+def test_snoh_dim_default():
+    desc = snoh(sphere())
+    cfg = SNoHConfig()
+    assert desc.shape == (cfg.dim,)
+
+
+def test_snoh_dim_is_thousand_class():
+    """SNoH default should be in the thousand-dim regime, not SIFT-sized."""
+    assert SNoHConfig().dim >= 1000
+
+
+def _cosine(a, b):
+    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
+
+
+def test_snoh_separates_shapes():
+    """Sphere/cylinder/plane/saddle should have low pairwise cosine sim."""
+    cfg = SNoHConfig(n_scales=2, d_min=4.0, d_max=12.0,
+                     n_bins_theta=18, n_bins_phi=18,
+                     n_bins_shape_index=8, n_bins_curvedness=8)
+    sigs = {name: snoh(make(), cfg=cfg)
+            for name, make in {"sphere": sphere, "cylinder": cylinder,
+                                "plane": plane, "saddle": saddle}.items()}
+    cos = _cosine(sigs["sphere"], sigs["plane"])
+    assert cos < 0.95, f"sphere vs plane too similar: {cos:.3f}"
+    cos = _cosine(sigs["sphere"], sigs["cylinder"])
+    assert cos < 0.99, f"sphere vs cylinder too similar: {cos:.3f}"
+
+
+# ---- Dot enhancement filter ------------------------------------------------
 
 def test_dot_value_bright_blob_positive():
     v = sphere()
@@ -90,14 +85,11 @@ def test_make_scales_endpoints():
     assert len(s) == 5
 
 
-# ---- Wall elimination (paper §2.3.2, Algorithm 1) ----------------------------------
-
+# ---- Wall elimination ------------------------------------------------------
 
 def test_wall_eliminate_runs_and_reduces_mask():
+    from qradiomics.shape import wall_eliminate  # type: ignore[import-not-found]
     v = plane(size=33, thickness=4)
-    _, keep = wall_eliminate(
-        v,
-        cfg=AHSNConfig(n_bins_theta=18, n_bins_phi=18),
-        area_threshold=20,
-    )
+    _, keep = wall_eliminate(v, cfg=AHSNConfig(n_bins_theta=18, n_bins_phi=18),
+                              area_threshold=20)
     assert keep.sum() < v.size

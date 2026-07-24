@@ -15,7 +15,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import click
 
@@ -361,3 +361,104 @@ def clinical_cmd(collection, output):
             f"No REST metadata for '{collection}'. Stub written to {out}.\n"
             f"See https://www.cancerimagingarchive.net/collections/ for the wiki clinical CSV."
         )
+
+
+@tcia.command("manifest")
+@click.option("--series", "series_csv", required=True, type=click.Path(exists=True),
+              help="series.csv from `qr tcia series` (rows = (PatientID, StudyInstanceUID, "
+                   "SeriesInstanceUID, Modality, …))")
+@click.option("--dicom-root", required=True, type=click.Path(exists=True, file_okay=False),
+              help="Root of the downloaded DICOM tree "
+                   "(<root>/<PatientID>/<StudyUID>/<SeriesUID>/*.dcm)")
+@click.option("--image-modality", default="CT", show_default=True,
+              help="Modality of the image series to include in the manifest "
+                   "(CT, PT, MR, …)")
+@click.option("--mask-modality", default="RTSTRUCT", show_default=True,
+              help="Modality of the mask/RTSTRUCT series (RTSTRUCT, SEG)")
+@click.option("--output", "-o", required=True, type=click.Path(),
+              help="Output manifest CSV (patient_id, modality, image_path, mask_path)")
+def manifest_cmd(series_csv, dicom_root, image_modality, mask_modality, output):
+    """Build a (patient_id, modality, image_path, mask_path) manifest from a
+    TCIA `series.csv` plus the matching on-disk DICOM tree.
+
+    `qr convert manifest-from-dir` relies on filename / directory-name globs
+    (`**/CT`, `RS.*.dcm`) to classify series, which doesn't work against
+    TCIA's UID-based layout (`<patient>/<study-uid>/<series-uid>/*.dcm`,
+    every file numbered, no `CT`/`RS` literals anywhere). This command uses
+    the Modality column already classified by `qr tcia series` and resolves
+    each row to its on-disk directory by `<dicom_root>/<PatientID>/<StudyUID>/<SeriesUID>/`.
+
+    \b
+    Example:
+      qr tcia manifest \\
+          --series      runs/lung1/series.csv \\
+          --dicom-root  runs/lung1/dicom \\
+          --output      runs/lung1/manifest.csv
+
+    For each patient with both an image-modality series and a mask-modality
+    series, emits one row::
+
+        patient_id, image_modality, <CT series dir>, <RTSTRUCT *.dcm file>
+
+    Patients missing either side are skipped with a warning on stderr; the
+    summary tallies how many patients were included / skipped.
+    """
+    root = Path(dicom_root)
+
+    # Group rows by patient.
+    by_pid: Dict[str, Dict[str, list]] = {}
+    with open(series_csv, newline="") as f:
+        for row in csv.DictReader(f):
+            pid = row.get("PatientID") or row.get("patient_id")
+            mod = row.get("Modality")
+            if not pid or not mod:
+                continue
+            by_pid.setdefault(pid, {}).setdefault(mod, []).append(row)
+
+    out = Path(output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    written = 0
+    skipped_no_image = 0
+    skipped_no_mask = 0
+    skipped_path_missing = 0
+    with open(out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["patient_id", "modality", "image_path", "mask_path"])
+        for pid in sorted(by_pid):
+            mods = by_pid[pid]
+            if image_modality not in mods:
+                skipped_no_image += 1
+                continue
+            if mask_modality not in mods:
+                skipped_no_mask += 1
+                continue
+
+            img_row = mods[image_modality][0]
+            mask_row = mods[mask_modality][0]
+            img_dir = root / pid / img_row["StudyInstanceUID"] / img_row["SeriesInstanceUID"]
+            mask_dir = root / pid / mask_row["StudyInstanceUID"] / mask_row["SeriesInstanceUID"]
+
+            if not img_dir.is_dir():
+                skipped_path_missing += 1
+                continue
+            # RTSTRUCT is a single-file series — pick the lone .dcm inside its dir.
+            mask_file: Optional[Path]
+            if mask_dir.is_dir():
+                hits = sorted(mask_dir.glob("*.dcm"))
+                mask_file = hits[0] if hits else None
+            else:
+                mask_file = None
+            if mask_file is None or not mask_file.is_file():
+                skipped_path_missing += 1
+                continue
+
+            w.writerow([pid, image_modality, str(img_dir), str(mask_file)])
+            written += 1
+
+    click.echo(
+        f"Wrote {written} rows → {out} "
+        f"(skipped: {skipped_no_image} no-{image_modality}, "
+        f"{skipped_no_mask} no-{mask_modality}, "
+        f"{skipped_path_missing} on-disk paths missing)"
+    )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import click
@@ -85,7 +86,9 @@ def plan_cmd(template, cohort_root, collection, clinical, roi, pattern, task, ou
     if "cohort_root" in sig:
         if not cohort_root:
             raise click.UsageError(f"Template '{template}' requires --cohort-root")
-        kwargs["cohort_root"] = cohort_root
+        # Resolve to absolute so plans stay valid when consumed from a different
+        # working directory (Prefect workers, Nextflow runs, …).
+        kwargs["cohort_root"] = str(Path(cohort_root).resolve())
     if "collection" in sig:
         if not collection:
             raise click.UsageError(f"Template '{template}' requires --collection")
@@ -93,7 +96,9 @@ def plan_cmd(template, cohort_root, collection, clinical, roi, pattern, task, ou
     if "clinical_csv" in sig:
         if not clinical:
             raise click.UsageError(f"Template '{template}' requires --clinical")
-        kwargs["clinical_csv"] = clinical
+        # Same: absolutize so a Prefect worker / Nextflow run resolves the
+        # path the same way the human did when running `qr workflow plan`.
+        kwargs["clinical_csv"] = str(Path(clinical).resolve())
     if "roi" in sig:
         kwargs["roi"] = roi
     if "task" in sig:
@@ -154,16 +159,28 @@ def scaffold_cmd(plan_path, executor, output):
          "small interactive runs; prefect for scheduled / observed runs)",
 )
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
-def run_cmd(plan_path, executor, dry_run):
+@click.option(
+    "--workers",
+    "-j",
+    type=int,
+    default=None,
+    help="Per-patient parallelism for --executor inline (default: $QR_INLINE_WORKERS"
+         " or 4). Ignored by the nextflow / prefect executors (they set their own"
+         " concurrency).",
+)
+def run_cmd(plan_path, executor, dry_run, workers):
     """Execute a workflow plan.
 
     \b
     The default executor is Nextflow — it parallelises per-patient steps,
     caches successful processes, and is the right choice for large
-    cohorts. Use --executor inline for small interactive runs (sequential
-    in this Python process), or --executor prefect for orchestration with
-    a Prefect server.
+    cohorts. Use --executor inline for small interactive runs (still
+    parallel across patients via a thread pool when nextflow isn't
+    available), or --executor prefect for orchestration with a Prefect
+    server.
     """
+    if workers is not None:
+        os.environ["QR_INLINE_WORKERS"] = str(workers)
     plan = load_plan(Path(plan_path))
     runner = WorkflowRunner(plan, executor=executor, dry_run=dry_run)
     results = runner.run()

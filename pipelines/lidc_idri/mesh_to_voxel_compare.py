@@ -22,15 +22,19 @@ mesh data" directly from qradiomics-public.
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.shape import classify_peak, spiculation_from_voxel
 
 
@@ -174,26 +178,19 @@ def main() -> int:
     if args.limit: work = work[: args.limit]
     print(f"{len(work)} nodules", file=sys.stderr)
 
-    rows = []
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_process_one, w): (w[0], w[1]) for w in work}
-        for fut in as_completed(futs):
-            pid, n = futs[fut]
-            try:
-                r = fut.result(); rows.append(r)
-                print(f"  ✓ {pid}#{n}: dice spic={r.get('dice_spic','?'):.3f} "
-                      f"lob={r.get('dice_lob','?'):.3f}  "
-                      f"vox qr/lcsr spic={r.get('vox_spic_qr','?')}/{r.get('vox_spic_lcsr','?')}"
-                      if 'dice_spic' in r else f"  ⚠ {pid}#{n}: {r}",
-                      file=sys.stderr)
-            except Exception as e:
-                print(f"  ✘ {pid}#{n}: {e}", file=sys.stderr)
+    def _fmt(key, rows: list[dict]) -> str:
+        r = rows[0] if rows else {}
+        if 'dice_spic' in r:
+            return (f"dice spic={r.get('dice_spic', '?'):.3f} "
+                    f"lob={r.get('dice_lob', '?'):.3f}  "
+                    f"vox qr/lcsr spic={r.get('vox_spic_qr', '?')}/{r.get('vox_spic_lcsr', '?')}")
+        return f"⚠ {r}"
 
-    keys = sorted({k for r in rows for k in r.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader(); w.writerows(rows)
-    print(f"wrote {len(rows)} rows → {args.out}", file=sys.stderr)
+    run_parallel_rows(
+        work, _process_one, args.jobs, args.out,
+        key_fn=lambda w: f"{w[0]}#{w[1]}",
+        format_success=_fmt,
+    )
 
     # Aggregate dice summary
     try:

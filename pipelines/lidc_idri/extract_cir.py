@@ -18,17 +18,21 @@ diagnosis, y_malignant + 1409 radiomics + 6 spiculation.
 from __future__ import annotations
 
 import argparse
-import csv
 import re
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.atomic import extract_features
 from qradiomics.shape import spiculation_from_voxel
 
@@ -183,27 +187,19 @@ def main() -> int:
     if args.limit: work = work[: args.limit]
     print(f"{len(work)} (pid, nodule) tasks for {args.cohort}", file=sys.stderr)
 
-    rows = []; ok = fail = 0
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_process_one, w): (w[0], w[1]) for w in work}
-        for fut in as_completed(futs):
-            pid, n = futs[fut]
-            try: r = fut.result()
-            except Exception as e:
-                fail += 1; print(f"  ✘ {pid}#{n}: {e}", file=sys.stderr); continue
-            if r.get("status_radiomics") == "ok": ok += 1
-            else: fail += 1
-            rows.append(r)
-            print(f"  ✓ {pid}#{n}: status={r.get('status_radiomics','?')[:15]} "
-                  f"spic={r.get('status_spic','?')[:10]} n_vox={r.get('n_voxels','?')}",
-                  file=sys.stderr)
+    def _fmt(key, rows: list[dict]) -> str:
+        r = rows[0] if rows else {}
+        return (f"status={r.get('status_radiomics', '?')[:15]} "
+                f"spic={r.get('status_spic', '?')[:10]} n_vox={r.get('n_voxels', '?')}")
 
-    keys = sorted({k for r in rows for k in r.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader(); w.writerows(rows)
-    print(f"wrote {len(rows)} rows → {args.out}  ({ok} ok / {fail} fail)",
-          file=sys.stderr)
+    def _is_ok(rows: list[dict]) -> bool:
+        return bool(rows) and rows[0].get("status_radiomics") == "ok"
+
+    run_parallel_rows(
+        work, _process_one, args.jobs, args.out,
+        key_fn=lambda w: f"{w[0]}#{w[1]}",
+        format_success=_fmt, is_ok=_is_ok,
+    )
     return 0
 
 

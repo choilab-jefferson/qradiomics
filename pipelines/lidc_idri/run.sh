@@ -13,21 +13,21 @@
 #   - LIDC malignancy classification (radiomics 1409 + spiculation)
 #
 # Env override:
-#   LIDC_SRC=/data/users/wxc151/LIDC-IDRI         # raw TCIA tree
-#   LIDC_OUT=/data/users/wxc151/LIDC-IDRI-out     # converted patients
+#   LIDC_SRC=/data/$USER/LIDC-IDRI                # raw TCIA tree
+#   LIDC_OUT=/data/$USER/LIDC-IDRI-out            # converted patients
 #   FEATURES_CSV=$LIDC_OUT/features.csv           # final feature table
 #   JOBS=16                                       # parallel workers
 #   LIMIT=                                        # smoke-test limit
 
 set -euo pipefail
-LIDC_SRC=${LIDC_SRC:-/data/users/wxc151/LIDC-IDRI}
-LIDC_OUT=${LIDC_OUT:-/data/users/wxc151/LIDC-IDRI-out}
+LIDC_SRC=${LIDC_SRC:-/data/$USER/LIDC-IDRI}
+LIDC_OUT=${LIDC_OUT:-/data/$USER/LIDC-IDRI-out}
 FEATURES_CSV=${FEATURES_CSV:-$LIDC_OUT/features.csv}
 JOBS=${JOBS:-16}
 LIMIT=${LIMIT:-}
 
-PUB=/home/wxc151/gitRepos/qradiomics-public
-HERE=$(dirname "$0")
+HERE=$(cd "$(dirname "$0")" && pwd)
+PUB=$(cd "$HERE/../.." && pwd)
 
 mkdir -p "$LIDC_OUT"
 

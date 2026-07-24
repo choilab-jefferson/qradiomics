@@ -187,7 +187,7 @@ class TestHUCorrection:
 
 # ─── integration with real HeartCB cohort (skip if absent) ─────────────────
 
-_HEARTCB = Path("/data/users/wxc151/HeartToxicity/HeartCB/HeartB10")
+_HEARTCB = Path("/data/datasets/heart-toxicity-heartcb/nrrd/HeartB10")
 
 
 @pytest.mark.skipif(

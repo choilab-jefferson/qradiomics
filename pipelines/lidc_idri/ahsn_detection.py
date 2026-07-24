@@ -19,15 +19,19 @@ exact lung-segmentation match.
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 
+# Allow direct script invocation without PYTHONPATH.
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from pipelines.common.parallel import run_parallel_rows
 from qradiomics.io.lidc import parse_lidc_xml, scan_lidc_dir
 from qradiomics.io.lidc.extract import _rasterise_nodule, _uid_to_z
 from qradiomics.shape import (
@@ -128,37 +132,20 @@ def main() -> int:
     print(f"found {len(patients)} converted patients", file=sys.stderr)
 
     work = [(pat.name, str(pat), args.lidc_src) for pat in patients]
-    all_rows: list[dict] = []
-    ok = fail = 0
-    with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-        futs = {ex.submit(_detect_one, w): w[0] for w in work}
-        for fut in as_completed(futs):
-            pid = futs[fut]
-            try:
-                rows = fut.result()
-            except Exception as e:
-                fail += 1
-                print(f"  ✘ {pid}: {e}", file=sys.stderr); continue
-            n_cand = sum(1 for r in rows if "ahsn_000" in r)
-            n_pos = sum(1 for r in rows if r.get("label") == 1)
-            if n_cand:
-                ok += 1
-            else:
-                fail += 1
-            all_rows.extend(rows)
-            print(f"  ✓ {pid}: {n_cand} candidate(s), {n_pos} positive",
-                  file=sys.stderr)
 
+    def _fmt(_pid, rows: list[dict]) -> str:
+        n_cand = sum(1 for r in rows if "ahsn_000" in r)
+        n_pos = sum(1 for r in rows if r.get("label") == 1)
+        return f"{n_cand} candidate(s), {n_pos} positive"
+
+    all_rows = run_parallel_rows(
+        work, _detect_one, args.jobs, args.out,
+        format_success=_fmt,
+        is_ok=lambda rows: any("ahsn_000" in r for r in rows),
+        skip_write_if_empty=True, summary_leading_blank=True,
+    )
     if not all_rows:
-        print("no rows produced", file=sys.stderr); return 1
-
-    keys = sorted({k for row in all_rows for k in row.keys()})
-    with open(args.out, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
-        w.writeheader()
-        w.writerows(all_rows)
-    print(f"\nwrote {len(all_rows)} rows → {args.out}  "
-          f"({ok} ok / {fail} fail)", file=sys.stderr)
+        return 1
     return 0
 
 

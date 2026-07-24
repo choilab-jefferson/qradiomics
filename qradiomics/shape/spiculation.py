@@ -365,12 +365,21 @@ def peaks_to_surfacelets(mesh: Mesh, peaks: list[Peak],
                            classes: Iterable[str] | None = None):
     """Each peak apex becomes a mesh-domain surface-let atom.
 
-    Returns a list of `Surfacelet` (from .surfacelet) using the apex
-    vertex coordinates, the apex normal, the mean Δarea as saliency,
-    and the class label. This unifies the 2021 mesh-domain detection
-    with the 2014/2026 voxel-domain surface-let representation.
+    Returns a list of `Surfacelet` (from qradiomics_private.shape.surfacelet) using
+    the apex vertex coordinates, the apex normal, the mean Δarea as saliency,
+    and the class label. This unifies the 2021 mesh-domain detection with the
+    2014/2026 voxel-domain surface-let representation.
+
+    Requires the `qradiomics_private` overlay (Surfacelet is unpublished).
     """
-    from .surfacelet import Surfacelet
+    try:
+        from qradiomics_private.shape.surfacelet import Surfacelet  # type: ignore[import-not-found]
+    except ImportError as e:
+        raise ImportError(
+            "peaks_to_surfacelets requires the qradiomics_private overlay "
+            "(provides qradiomics_private.shape.surfacelet.Surfacelet). "
+            "Install the dev repo or check `qr info`."
+        ) from e
     classes = list(classes) if classes is not None else ["other"] * len(peaks)
     vn = vertex_normals(mesh)
     out: list[Surfacelet] = []

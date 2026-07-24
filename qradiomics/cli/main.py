@@ -23,6 +23,8 @@ from qradiomics.cli.commands import (
     tcia,
     workflow,
 )
+from qradiomics.cli.commands.bench import bench
+from qradiomics.cli.commands.models_cmd import models
 from qradiomics.cli.config_io import load_cli_config
 from qradiomics.cli.pattern import list_patterns, search_patterns
 
@@ -55,7 +57,6 @@ def cli(ctx, config_path, verbose):
 cli.add_command(tcia)
 cli.add_command(anonymize)
 cli.add_command(convert)
-cli.add_command(lidc)
 cli.add_command(preprocess)
 cli.add_command(register)
 cli.add_command(hu_correct)
@@ -64,10 +65,19 @@ cli.add_command(shape)
 cli.add_command(delta)
 cli.add_command(results)
 cli.add_command(analyze)
+cli.add_command(lidc)
 cli.add_command(ml)
 cli.add_command(pacs)
 cli.add_command(workflow)
 cli.add_command(config)
+cli.add_command(models)
+cli.add_command(bench)
+
+# `qr ml models` — alias of the top-level `qr models` stub under the `ml`
+# group, since model management is a modeling-stage concern. Same Group
+# object registered under both parents (Click has no single-parent
+# restriction on commands), so `qr models` keeps working unchanged.
+ml.add_command(models, name="models")
 
 
 @cli.group()
@@ -77,6 +87,22 @@ def pattern():
 
 pattern.add_command(list_patterns, name="list")
 pattern.add_command(search_patterns, name="search")
+
+
+# ---------------------------------------------------------------------------
+# Private overlay (best-effort) — mirrors the guarded-import pattern used by
+# the legacy `cli/main.py` entrypoint. When the optional `qradiomics_private`
+# distribution is installed, it attaches `qr private ...` subcommands here.
+# Public users (overlay absent) see exactly the commands defined above, with
+# no error, no traceback, no missing-import crash.
+# ---------------------------------------------------------------------------
+
+try:
+    from qradiomics_private.cli import register_private_commands  # type: ignore[import-not-found]
+
+    register_private_commands(cli)
+except ImportError:
+    pass
 
 
 @cli.command()

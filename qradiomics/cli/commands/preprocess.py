@@ -21,6 +21,34 @@ from pathlib import Path
 import click
 
 
+def _align_mask_to_image(image, mask):
+    """Resample mask onto the image grid if the two differ.
+
+    Mirrors the legacy ``RESAMPLE_MASK_TO_IMAGE`` Nextflow module: when a
+    mask is stored on its own (often smaller) grid — e.g. a heart label
+    pre-cropped to the organ's bounding box while its parent CT remains
+    full-body — the bbox-driven crop below would request a region larger
+    than the mask itself and fail. Aligning the mask to the image grid
+    via nearest-neighbour resampling (default value 0 outside the mask's
+    native extent) makes the rest of the pipeline grid-agnostic without
+    a separate pre-padding stage.
+    """
+    import SimpleITK as sitk
+    if (
+        mask.GetSize() == image.GetSize()
+        and mask.GetSpacing() == image.GetSpacing()
+        and mask.GetOrigin() == image.GetOrigin()
+        and mask.GetDirection() == image.GetDirection()
+    ):
+        return mask
+    rf = sitk.ResampleImageFilter()
+    rf.SetReferenceImage(image)
+    rf.SetInterpolator(sitk.sitkNearestNeighbor)
+    rf.SetDefaultPixelValue(0)
+    rf.SetOutputPixelType(mask.GetPixelID())
+    return rf.Execute(mask)
+
+
 def _crop_one(args):
     """Per-patient crop (+ optional resample). Returns (pid, ct_out, mask_out, err)."""
     pid, image_path, mask_path, out_dir, roi, pad_mm, resample = args
@@ -30,6 +58,7 @@ def _crop_one(args):
 
         image = sitk.ReadImage(image_path)
         mask = sitk.ReadImage(mask_path)
+        mask = _align_mask_to_image(image, mask)
 
         # ROI bounding box (+ pad in mm converted to voxels).
         stats = sitk.LabelShapeStatisticsImageFilter()

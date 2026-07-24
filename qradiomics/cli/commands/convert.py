@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import click
@@ -439,3 +440,143 @@ def fix_preamble(dicom_path):
     else:
         click.echo(f"✗ Failed to repair DICOM preamble for: {p}", err=True)
         raise SystemExit(1)
+
+
+@convert.command("from-manifest")
+@click.option("--manifest", "-m", "manifest_path", required=True,
+              type=click.Path(exists=True, dir_okay=False),
+              help="Input manifest CSV with columns (patient_id, modality, "
+                   "image_path, mask_path) — image_path is a DICOM-series directory, "
+                   "mask_path is an RTSTRUCT .dcm file or directory containing one.")
+@click.option("--nrrd-dir", "-d", required=True, type=click.Path(),
+              help="Output NRRD root. Per-patient files land at "
+                   "<nrrd-dir>/<patient_id>_<modality>.nrrd and "
+                   "<nrrd-dir>/<patient_id>_<roi>-label.nrrd")
+@click.option("--roi", default="GTV-1", show_default=True,
+              help="RTSTRUCT ROI name to extract")
+@click.option("--output", "-o", "output_manifest", required=True, type=click.Path(),
+              help="Output manifest CSV pointing at the converted NRRDs")
+@click.option("--skip-existing/--overwrite", default=True, show_default=True,
+              help="Skip rows whose NRRDs already exist")
+@click.option("--jobs", "-j", default=1, type=int, show_default=True,
+              help="Parallel workers (1 = sequential). I/O- and CPU-bound; 4-8 is a "
+                   "good default on a workstation, scale up to nproc for batch "
+                   "conversion of large TCIA cohorts.")
+def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existing, jobs):
+    """Batch-convert every (image_dir, rtstruct) row from an input manifest
+    into an NRRD pair (image + ROI label), emitting a new manifest that
+    points at the converted NRRDs.
+
+    Pairs naturally with `qr tcia manifest` — that command produces the
+    (image_dir, mask_dicom) manifest from a TCIA download tree, and this
+    command turns it into the (image_nrrd, mask_nrrd) manifest that
+    `qr extract` consumes.
+
+    \b
+    Example:
+      qr tcia manifest \\
+          --series      runs/lung1/series.csv \\
+          --dicom-root  runs/lung1/dicom \\
+          --output      runs/lung1/tcia_manifest.csv
+
+      qr convert from-manifest \\
+          --manifest  runs/lung1/tcia_manifest.csv \\
+          --nrrd-dir  runs/lung1/nrrd \\
+          --roi       GTV-1 \\
+          --output    runs/lung1/manifest.csv
+    """
+    # Reuse the already-tested `qr convert dicom-series` and `qr convert rtstruct`
+    # CLI commands via subprocess. Lets this command stay a thin loop without
+    # duplicating their internal entry points.
+    import subprocess
+    import sys
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    nrrd_root = Path(nrrd_dir)
+    nrrd_root.mkdir(parents=True, exist_ok=True)
+    out_path = Path(output_manifest)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Read rows up-front so we can dispatch them across workers + write the
+    # output manifest deterministically (sorted by input order).
+    rows = []
+    with open(manifest_path, newline="") as f_in:
+        for row in csv.DictReader(f_in):
+            pid = row.get("patient_id") or row.get("PatientID")
+            modality = row.get("modality") or "CT"
+            image_path = row.get("image_path")
+            mask_path = row.get("mask_path")
+            if pid and image_path and mask_path:
+                rows.append((pid, modality, image_path, mask_path))
+
+    def _convert_one(row):
+        pid, modality, image_path, mask_path = row
+        out_image = nrrd_root / f"{pid}_{modality}.nrrd"
+        out_mask = nrrd_root / f"{pid}_{roi}-label.nrrd"
+
+        if skip_existing and out_image.is_file() and out_mask.is_file():
+            return {"pid": pid, "status": "cached", "row":
+                    [pid, modality, str(out_image), str(out_mask)]}
+
+        try:
+            if not (skip_existing and out_image.is_file()):
+                subprocess.run(
+                    [sys.executable, "-m", "qradiomics.cli.main", "convert", "dicom-series",
+                     "--input", image_path, "--output", str(out_image)],
+                    check=True, capture_output=True,
+                )
+            if not (skip_existing and out_mask.is_file()):
+                subprocess.run(
+                    [sys.executable, "-m", "qradiomics.cli.main", "convert", "rtstruct",
+                     "--dicom-dir", image_path, "--rtstruct", mask_path,
+                     "--roi", roi, "--output", str(out_mask)],
+                    check=True, capture_output=True,
+                )
+            return {"pid": pid, "status": "written", "row":
+                    [pid, modality, str(out_image), str(out_mask)]}
+        except subprocess.CalledProcessError as e:
+            tail = (e.stderr or b"").decode(errors="replace").strip().splitlines()[-1:] or [""]
+            return {"pid": pid, "status": "failed",
+                    "reason": f"exit {e.returncode}: {tail[0][-200:]}"}
+        except Exception as e:  # noqa: BLE001
+            return {"pid": pid, "status": "failed",
+                    "reason": f"{type(e).__name__}: {e}"}
+
+    results_by_pid = {}
+    if jobs <= 1:
+        for r in rows:
+            res = _convert_one(r)
+            results_by_pid[res["pid"]] = res
+            if res["status"] == "failed":
+                click.echo(f"  [{res['pid']}] failed: {res['reason']}", err=True)
+    else:
+        with ThreadPoolExecutor(max_workers=jobs) as ex:
+            futures = {ex.submit(_convert_one, r): r[0] for r in rows}
+            for fut in as_completed(futures):
+                res = fut.result()
+                results_by_pid[res["pid"]] = res
+                if res["status"] == "failed":
+                    click.echo(f"  [{res['pid']}] failed: {res['reason']}", err=True)
+
+    # Emit the output manifest in the input row order, including cached rows.
+    written = skipped = failed = 0
+    with open(out_path, "w", newline="") as f_out:
+        writer = csv.writer(f_out)
+        writer.writerow(["patient_id", "modality", "image_path", "mask_path"])
+        for pid, *_ in rows:
+            res = results_by_pid.get(pid)
+            if res is None:
+                continue
+            if res["status"] == "failed":
+                failed += 1
+                continue
+            writer.writerow(res["row"])
+            if res["status"] == "cached":
+                skipped += 1
+            else:
+                written += 1
+
+    click.echo(
+        f"qr convert from-manifest: wrote {written} new + {skipped} cached "
+        f"({failed} failed) → {out_path}  [jobs={jobs}]"
+    )

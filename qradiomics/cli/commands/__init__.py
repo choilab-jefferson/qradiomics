@@ -18,5 +18,5 @@ from .tcia import tcia
 from .workflow import workflow
 
 __all__ = ["analyze", "anonymize", "config", "convert", "delta", "extract",
-           "hu_correct", "lidc", "ml", "pacs", "preprocess", "register", "results",
-           "shape", "tcia", "workflow"]
+           "hu_correct", "lidc", "ml", "pacs", "preprocess", "register",
+           "results", "shape", "tcia", "workflow"]

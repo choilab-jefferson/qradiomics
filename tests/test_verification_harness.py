@@ -41,7 +41,7 @@ class TestCompareFeatureDicts:
         assert any("extra" in l for l in labels)
 
 
-_HEARTCB = Path("/data/users/wxc151/HeartToxicity/HeartCB")
+_HEARTCB = Path("/data/datasets/heart-toxicity-heartcb/nrrd")
 
 
 @pytest.mark.skipif(
