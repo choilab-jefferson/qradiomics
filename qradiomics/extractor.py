@@ -179,9 +179,15 @@ class RadiomicsExtractor:
 
         features_path = job_dir / "features.csv"
         if all_features:
-            fieldnames = list(all_features[0].keys())
+            # Header is the UNION of every row's keys, not just the first
+            # patient's: PyRadiomics can emit a different key set per case (e.g. a
+            # degenerate/single-slice mask drops some 3D shape features), and a
+            # first-patient-only header makes csv.DictWriter raise on the extras
+            # (default extrasaction="raise"), discarding every already-extracted
+            # result at the final write.
+            fieldnames = union_fieldnames(all_features)
             with open(features_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
                 writer.writeheader()
                 writer.writerows(all_features)
 
@@ -209,6 +215,23 @@ class RadiomicsExtractor:
             "status": "extracted" if patients_processed > 0 else "error",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+
+def union_fieldnames(rows: List[Dict[str, Any]]) -> List[str]:
+    """Ordered union of the keys across ``rows``.
+
+    Preserves the first row's key order and appends any keys first seen in later
+    rows. Used to build a CSV header that tolerates a heterogeneous key set
+    across patients (see the note in ``RadiomicsExtractor.run_extraction``).
+    """
+    fieldnames: List[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for k in row:
+            if k not in seen:
+                seen.add(k)
+                fieldnames.append(k)
+    return fieldnames
 
 
 def get_radiomics_extractor() -> RadiomicsExtractor:
