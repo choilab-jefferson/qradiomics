@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 
@@ -67,12 +67,25 @@ def _select_radiomics_columns(df: pd.DataFrame) -> list[str]:
     return cols
 
 
-def _cv_auc(X: pd.DataFrame, y: pd.Series, n_splits: int = 5,
+def _cv_auc(X: pd.DataFrame, y: pd.Series, groups=None, n_splits: int = 5,
             top_k: int = 50, seed: int = 42) -> tuple[float, float]:
-    """5-fold leakage-safe CV: corr<0.95 drop + univariate top-K + RF AUC."""
-    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    """5-fold leakage-safe CV: corr<0.95 drop + univariate top-K + RF AUC.
+
+    When ``groups`` (patient ids) is given, folds are made with
+    StratifiedGroupKFold so all nodules of a patient stay on the same side of
+    the split. LIDC has multiple nodules per patient (and reader-duplicate
+    rows), so a plain StratifiedKFold leaks the same patient into train and
+    test and inflates the AUC. Falls back to StratifiedKFold only when there
+    are too few groups to form ``n_splits`` folds.
+    """
+    if groups is not None and len(set(groups)) >= n_splits:
+        kf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        splits = list(kf.split(X, y, groups))
+    else:
+        kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        splits = list(kf.split(X, y))
     aucs = []
-    for fold, (tr, te) in enumerate(kf.split(X, y)):
+    for fold, (tr, te) in enumerate(splits):
         Xtr, Xte = X.iloc[tr], X.iloc[te]
         ytr, yte = y.iloc[tr], y.iloc[te]
 
@@ -145,7 +158,7 @@ def reproduce(features_csv: Path, out_md: Path) -> dict:
     if radio_cols:
         X = df[radio_cols]; y = df["y"]
         if len(df) >= 25:                            # need enough for CV
-            auc, std = _cv_auc(X, y, top_k=50)
+            auc, std = _cv_auc(X, y, groups=df["pid"].to_numpy(), top_k=50)
             results["medphys2018_radiomics"] = {"auc": auc, "std": std,
                                                  "n": len(df),
                                                  "n_features": len(radio_cols)}
@@ -163,7 +176,7 @@ def reproduce(features_csv: Path, out_md: Path) -> dict:
     if spic_present:
         X = df[spic_present]; y = df["y"]
         if len(df) >= 25:
-            auc, std = _cv_auc(X, y, top_k=len(spic_present))
+            auc, std = _cv_auc(X, y, groups=df["pid"].to_numpy(), top_k=len(spic_present))
             results["cmpb2021_spiculation"] = {"auc": auc, "std": std,
                                                 "n": len(df),
                                                 "features": spic_present}
