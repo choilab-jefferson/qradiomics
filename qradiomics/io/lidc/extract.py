@@ -236,7 +236,7 @@ def convert_patient(dicom_series_dir: str | Path,
             nz = np.argwhere(n_mask > 0)
             bbox = (
                 int(nz[:, 2].min()), int(nz[:, 1].min()), int(nz[:, 0].min()),
-                int(nz[:, 2].ptp() + 1), int(nz[:, 1].ptp() + 1), int(nz[:, 0].ptp() + 1),
+                int(np.ptp(nz[:, 2]) + 1), int(np.ptp(nz[:, 1]) + 1), int(np.ptp(nz[:, 0]) + 1),
             )
             centroid_idx = (float(nz[:, 2].mean()),
                             float(nz[:, 1].mean()),
