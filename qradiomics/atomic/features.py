@@ -55,8 +55,13 @@ def extract_features(
         scalars where possible (numpy scalars are unwrapped via ``.item()``).
     """
     # Import lazily so qradiomics.atomic is importable without PyRadiomics
-    # installed — useful for the doc/test layer.
-    from radiomics import featureextractor  # noqa: PLC0415
+    # installed — it is an optional extra, and only extraction needs it.
+    try:
+        from radiomics import featureextractor  # noqa: PLC0415
+    except ModuleNotFoundError as e:
+        from qradiomics.extractor import PYRADIOMICS_INSTALL_HINT
+
+        raise ModuleNotFoundError(PYRADIOMICS_INSTALL_HINT) from e
 
     if params_file is not None:
         extractor = featureextractor.RadiomicsFeatureExtractor(str(params_file))
