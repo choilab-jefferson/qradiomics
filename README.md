@@ -42,16 +42,28 @@ Env knobs accepted by the script: `QR_REPO_URL`, `QR_REPO_DIR`,
 **Plain `pip` install (e.g. Colab):**
 
 ```bash
-pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
 pip install qradiomics
 ```
 
-Install pyradiomics **first**. `pip install qradiomics` on its own fails to
-resolve its `pyradiomics>=3.1.0` requirement: pyradiomics ships no PyPI wheel
-for Python 3.10+ and its 3.1.0 sdist has broken metadata (declares `3.0.1a1`),
-so pip discards it. This is a pyradiomics packaging limitation, not a
-qradiomics one — installing pyradiomics from its upstream git first gives pip a
-build that satisfies the requirement.
+That gives you the CLI and everything that does not extract features —
+conversion, preprocessing, PHI handling, LIDC, shape, registration, the
+analysis and ML commands.
+
+**To extract features**, add the default engine:
+
+```bash
+pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
+```
+
+pyradiomics is an optional extra rather than a hard dependency, because it
+cannot be installed from PyPI at all on Python 3.10+: its wheels stop at cp39
+and its 3.1.0 sdist has broken metadata (it declares `3.0.1a1`), so pip
+discards it. Requiring it made plain `pip install qradiomics` fail on every
+modern interpreter. Installing from upstream git gives pip a build that
+satisfies `>=3.1.0`.
+
+This is a pyradiomics packaging limitation, not a qradiomics one. `qr extract`
+will tell you the same thing if the engine is missing.
 
 ---
 

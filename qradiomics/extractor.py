@@ -18,6 +18,14 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
+# pyradiomics is an optional extra (see pyproject.toml). It cannot be installed
+# from PyPI on Python 3.10+, so point at the git install rather than at the
+# extra name, which would not resolve either.
+PYRADIOMICS_INSTALL_HINT = (
+    "pyradiomics is an optional dependency and is not installed. Install it with: "
+    'pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"'
+)
+
 
 class RadiomicsExtractor:
     """Synchronous radiomics extractor wrapper around PyRadiomics.
@@ -43,12 +51,12 @@ class RadiomicsExtractor:
         try:
             from radiomics import featureextractor  # type: ignore
         except Exception as e:  # pragma: no cover - environment dependent
-            logger.error("PyRadiomics import failed: %s", e)
+            logger.error("PyRadiomics import failed: %s. %s", e, PYRADIOMICS_INSTALL_HINT)
             return {
                 "features_uri": f"file://{job_dir.resolve()}/features.csv",
                 "feature_count": 0,
                 "status": "error",
-                "error": f"PyRadiomics import failed: {e}",
+                "error": f"PyRadiomics import failed: {e}. {PYRADIOMICS_INSTALL_HINT}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -285,7 +293,10 @@ def _worker_init(
 ) -> None:
     """ProcessPoolExecutor initializer — build a per-process extractor once."""
     global _WORKER_EXTRACTOR
-    from radiomics import featureextractor  # type: ignore
+    try:
+        from radiomics import featureextractor  # type: ignore
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(PYRADIOMICS_INSTALL_HINT) from e
 
     _WORKER_EXTRACTOR = _configure_extractor(
         featureextractor, extractor_params, image_types, feature_classes

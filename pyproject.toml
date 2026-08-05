@@ -31,13 +31,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.0.0",
     "rich>=13.0.0",
-    # pyradiomics has no PyPI wheel for cp310+ and its 3.1.0 sdist is broken
-    # (metadata declares 3.0.1a1). The supported install path is scripts/
-    # kickoff.sh, which installs pyradiomics 3.1.x from git first; pip then
-    # keeps that git build to satisfy ">=3.1.0". Do NOT loosen this to
-    # ">=3.0.1": that makes `pip install -e .` try to *build* the broken PyPI
-    # 3.1.0 sdist (instead of discarding it) and the kickoff install fails.
-    "pyradiomics>=3.1.0",
+    # pyradiomics is NOT here: it is an extra. See [project.optional-dependencies].
     "pydicom>=2.4",
     "SimpleITK>=2.2.0",
     "numpy>=1.24.0",
@@ -56,6 +50,25 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The default feature-extraction engine, optional for the same reason pysera is:
+# it is one engine among several, and nothing else in the package needs it. The
+# three import sites are all inside functions, so `qr` runs without it and only
+# extraction requires it.
+#
+# It has to be an extra rather than a hard dependency because it cannot be
+# installed from PyPI at all on Python 3.10+: the wheels stop at cp39 and the
+# 3.1.0 sdist declares version 3.0.1a1 in its metadata, so pip discards it and
+# reports "No matching distribution found". Requiring it therefore made plain
+# `pip install qradiomics` fail for every modern interpreter, including Colab.
+#
+# Install it from upstream git, which is what scripts/kickoff.sh does on 3.10+
+# and what dev installs already use:
+#
+#     pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
+#
+# Do NOT loosen the bound to ">=3.0.1" to dodge this: pip would then try to
+# *build* the broken 3.1.0 sdist instead of discarding it, and the install fails.
+pyradiomics = ["pyradiomics>=3.1.0"]
 shap = ["shap>=0.41.0"]
 rtstruct = ["rt-utils>=1.2.7"]
 prefect = ["prefect>=2.10"]
