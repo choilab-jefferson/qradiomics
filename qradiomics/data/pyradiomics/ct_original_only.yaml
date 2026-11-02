@@ -8,5 +8,5 @@ imageType:
 setting:
   normalize: false
   binWidth: 25
-  geometryTolerance: 1e-3
+  geometryTolerance: 1.0e-3
   correctMask: true

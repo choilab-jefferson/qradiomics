@@ -68,7 +68,8 @@ qr extract -m manifest.csv -p ct-default -o features.csv [--jobs N] [--bin-width
   (see `tests/test_extract_worker_crash.py`) — the run continues and logs the failure.
 - Verified: on a synthetic sphere phantom, `qr extract -p ct-default` prints
   `ok (1409 features)` and writes a 1410-column CSV (`patient_id` + 1409 features).
-- `--engine <pyradiomics,pysera,rtools|all>` (comma-separated, default
+- **Dev/main addition (post-v0.9.3, not present when this reference was authored on
+  `public`):** `--engine <pyradiomics,pysera,rtools|all>` (comma-separated, default
   `pyradiomics`) runs one or more extraction engines in a single pass, e.g.
   `qr extract -m manifest.csv -o features.csv --engine pyradiomics,pysera,rtools`.
   See `qr extract --help`.
@@ -230,7 +231,13 @@ qr pacs watch <profile>                   # watch for incoming studies
 ## other
 
 - `qr preprocess` — resample / normalize an image+mask pair before extraction.
-- `qr register` — register a moving image+mask onto a fixed image (`register_pair`).
+- `qr register` — register a moving image+mask onto a fixed image. `--backend sitk`
+  (default, `register_pair`) is rigid/affine only, no external dependency. `--backend
+  plastimatch` and `--backend elastix` shell out to / call the external DIR tools and
+  support deformable (B-spline) registration via `--stages rigid,affine,bspline`;
+  plastimatch needs the `plastimatch` binary on PATH, elastix needs
+  `pip install qradiomics[elastix]`. See `qradiomics/atomic/registration_plastimatch.py`
+  and `registration_elastix.py`.
 - `qr hu-correct` — histogram-match HU across scanners (`histogram_match_hu`).
 - `qr anonymize` — strip identifying DICOM tags. Confirm no PHI leaks downstream.
 - `qr config` — show / manage CLI config (`qradiomics.yaml`, PACS profiles, etc.).

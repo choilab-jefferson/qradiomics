@@ -97,13 +97,9 @@ def load_segment_from_seg_nrrd(
 
     arr = sitk.GetArrayFromImage(seg)
     if arr.ndim != 4:
-        raise ValueError(
-            f"seg.nrrd is not 4-D (channels axis missing): shape={arr.shape}"
-        )
+        raise ValueError(f"seg.nrrd is not 4-D (channels axis missing): shape={arr.shape}")
     if idx < 0 or idx >= arr.shape[-1]:
-        raise ValueError(
-            f"Segment index {idx} out of range for shape {arr.shape}."
-        )
+        raise ValueError(f"Segment index {idx} out of range for shape {arr.shape}.")
 
     binary = (arr[..., idx] > 0).astype(np.uint8) * int(output_label)
     mask = sitk.GetImageFromArray(binary)

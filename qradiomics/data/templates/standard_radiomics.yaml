@@ -127,14 +127,16 @@ feature_extraction:
     - glcm
     - glrlm
     - glszm
+    - gldm
+    - ngtdm
 
   settings:
     # DO NOT normalize CT/PET - they are already standardized physical units
     # CT: Hounsfield Units (HU), PET: Standardized Uptake Value (SUV)
     normalize: false
     binWidth:
-      CT: 25
-      PET: 0.5
+      CT: 25    # Hounsfield units
+      PET: 0.25 # SUV; 0.5 was the pre-2026-03-18 value, corrected by JeffLuRa 02e4e3af
 
   quality_control:
     icc_threshold: 0.8

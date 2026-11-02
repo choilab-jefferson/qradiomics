@@ -5,37 +5,51 @@ import numpy as np
 import pytest
 
 from qradiomics.shape import (  # type: ignore[import-not-found]
-    voxel_to_mesh, vertex_areas, face_areas, spherical_parameterization,
-    area_distortion, detect_peaks, classify_peak, ClassifyConfig,
-    spiculation_features, spiculation_from_voxel, peaks_to_surfacelets,
+    voxel_to_mesh,
+    vertex_areas,
+    face_areas,
+    spherical_parameterization,
+    area_distortion,
+    detect_peaks,
+    classify_peak,
+    ClassifyConfig,
+    spiculation_features,
+    spiculation_from_voxel,
+    peaks_to_surfacelets,
     SpiculationFeatures,
 )
 from qradiomics.shape.phantoms import sphere  # type: ignore
 
 
-def _spiked_sphere(size: int = 41, r: float = 9.0, n_spikes: int = 4,
-                    spike_len: float = 5.0, spike_radius: float = 1.5
-                    ) -> np.ndarray:
+def _spiked_sphere(
+    size: int = 41,
+    r: float = 9.0,
+    n_spikes: int = 4,
+    spike_len: float = 5.0,
+    spike_radius: float = 1.5,
+) -> np.ndarray:
     """Sphere with N protruding spikes along principal axes."""
     c = (size - 1) / 2
     z, y, x = np.indices((size, size, size), dtype=np.float32)
-    z -= c; y -= c; x -= c
-    rho = np.sqrt(z ** 2 + y ** 2 + x ** 2)
+    z -= c
+    y -= c
+    x -= c
+    rho = np.sqrt(z**2 + y**2 + x**2)
     mask = (rho <= r).astype(np.float32)
     # Add spikes along ±x, ±y, ±z (cap at n_spikes)
-    dirs = [(0, 0, 1), (0, 0, -1), (0, 1, 0), (0, -1, 0),
-            (1, 0, 0), (-1, 0, 0)][:n_spikes]
+    dirs = [(0, 0, 1), (0, 0, -1), (0, 1, 0), (0, -1, 0), (1, 0, 0), (-1, 0, 0)][:n_spikes]
     for dz, dy, dx in dirs:
         # Distance from spike axis line (passing through center)
         axis = np.array([dz, dy, dx], dtype=np.float32)
         proj = z * dz + y * dy + x * dx
         perp2 = (z - proj * dz) ** 2 + (y - proj * dy) ** 2 + (x - proj * dx) ** 2
-        spike = (proj >= r - 1) & (proj <= r + spike_len) & (perp2 <= spike_radius ** 2)
+        spike = (proj >= r - 1) & (proj <= r + spike_len) & (perp2 <= spike_radius**2)
         mask = np.maximum(mask, spike.astype(np.float32))
     return mask
 
 
 # ---- Mesh utilities --------------------------------------------------------
+
 
 def test_voxel_to_mesh_returns_mesh():
     sph = (sphere(size=33, r=8) < -500).astype(np.float32)
@@ -52,6 +66,7 @@ def test_vertex_areas_sum_equals_total():
 
 
 # ---- Spherical parameterization -------------------------------------------
+
 
 def test_spherical_param_on_unit_sphere():
     sph = (sphere(size=33, r=8) < -500).astype(np.float32)
@@ -75,6 +90,7 @@ def test_area_distortion_low_for_round_sphere():
 
 # ---- Peak detection on spiked sphere --------------------------------------
 
+
 def test_detect_peaks_on_spiked_sphere():
     """A spiked sphere should expose at least 1 negative-distortion peak."""
     mask = _spiked_sphere(size=41, n_spikes=4, spike_len=5)
@@ -96,25 +112,27 @@ def test_spiculation_features_shape():
     mask = _spiked_sphere(size=41, n_spikes=4, spike_len=5)
     feats, _, _, _ = spiculation_from_voxel(mask, n_param_iter=80)
     assert isinstance(feats, SpiculationFeatures)
-    assert feats.Np == feats.Na + feats.Nl + feats.Na_att + \
-           sum(1 for c in feats.classes if c == "small")
+    assert feats.Np == feats.Na + feats.Nl + feats.Na_att + sum(
+        1 for c in feats.classes if c == "small"
+    )
 
 
 def test_classify_with_attachment_mask():
     mask = _spiked_sphere(size=41, n_spikes=4, spike_len=5)
     attach = np.zeros_like(mask, dtype=bool)
     attach[20:22, 20:22, 20:22] = True
-    feats, _, _, _ = spiculation_from_voxel(
-        mask, attachment_mask=attach, n_param_iter=80
-    )
+    feats, _, _, _ = spiculation_from_voxel(mask, attachment_mask=attach, n_param_iter=80)
     assert feats.Na_att >= 0
 
 
 # ---- Bridge: mesh peaks → voxel surface-lets ------------------------------
 
+
 def test_peaks_to_surfacelets_returns_atoms():
-    pytest.importorskip("qradiomics_private",
-                        reason="peaks_to_surfacelets needs qradiomics_private.shape.surfacelet")
+    pytest.importorskip(
+        "qradiomics_private",
+        reason="peaks_to_surfacelets needs qradiomics_private.shape.surfacelet",
+    )
     mask = _spiked_sphere(size=41, n_spikes=4, spike_len=5)
     feats, peaks, _, mesh = spiculation_from_voxel(mask, n_param_iter=80)
     sl = peaks_to_surfacelets(mesh, peaks, feats.classes)
@@ -126,6 +144,7 @@ def test_peaks_to_surfacelets_returns_atoms():
 
 # ---- End-to-end behavior --------------------------------------------------
 
+
 def test_pure_sphere_has_few_spikes():
     """A perfect sphere should have very few spiculations vs total peaks."""
     sph = (sphere(size=33, r=10) < -500).astype(np.float32)
@@ -135,8 +154,9 @@ def test_pure_sphere_has_few_spikes():
     # cap-like peaks, but they should be the minority.
     if feats.Np > 0:
         spic_fraction = feats.Na / feats.Np
-        assert spic_fraction < 0.2, \
-            f"pure sphere: {feats.Na}/{feats.Np} = {spic_fraction:.2%} spiculation"
+        assert (
+            spic_fraction < 0.2
+        ), f"pure sphere: {feats.Na}/{feats.Np} = {spic_fraction:.2%} spiculation"
 
 
 def test_mesh_pipeline_runs_on_both_shapes():

@@ -25,10 +25,14 @@ def test_manifest_from_per_patient_subdirs(tmp_path):
         convert,
         [
             "manifest-from-dir",
-            "-d", str(tmp_path),
-            "--image-glob", "*_CT.nrrd",
-            "--mask-glob", "*-label.nrrd",
-            "-o", str(out),
+            "-d",
+            str(tmp_path),
+            "--image-glob",
+            "*_CT.nrrd",
+            "--mask-glob",
+            "*-label.nrrd",
+            "-o",
+            str(out),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -56,10 +60,14 @@ def test_manifest_from_flat_layout(tmp_path):
         convert,
         [
             "manifest-from-dir",
-            "-d", str(tmp_path),
-            "--image-glob", "*_image.nrrd",
-            "--mask-glob", "*_mask.nrrd",
-            "-o", str(out),
+            "-d",
+            str(tmp_path),
+            "--image-glob",
+            "*_image.nrrd",
+            "--mask-glob",
+            "*_mask.nrrd",
+            "-o",
+            str(out),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -78,10 +86,14 @@ def test_manifest_from_dir_no_pairs_errors(tmp_path):
         convert,
         [
             "manifest-from-dir",
-            "-d", str(tmp_path),
-            "--image-glob", "*_image.nrrd",
-            "--mask-glob", "*_mask.nrrd",
-            "-o", str(out),
+            "-d",
+            str(tmp_path),
+            "--image-glob",
+            "*_image.nrrd",
+            "--mask-glob",
+            "*_mask.nrrd",
+            "-o",
+            str(out),
         ],
     )
     assert result.exit_code != 0

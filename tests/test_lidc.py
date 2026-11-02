@@ -133,14 +133,23 @@ class TestParseXML:
 class TestCharacteristicsFromElement:
     def test_missing_element_yields_zeros(self):
         ch = Characteristics.from_element(None)
-        assert all(getattr(ch, f) == 0 for f in (
-            "subtlety", "internalStructure", "calcification", "sphericity",
-            "margin", "lobulation", "spiculation", "texture", "malignancy"))
+        assert all(
+            getattr(ch, f) == 0
+            for f in (
+                "subtlety",
+                "internalStructure",
+                "calcification",
+                "sphericity",
+                "margin",
+                "lobulation",
+                "spiculation",
+                "texture",
+                "malignancy",
+            )
+        )
 
     def test_partial_fields_default_to_zero(self):
-        root = ET.fromstring(
-            "<characteristics><subtlety>5</subtlety></characteristics>"
-        )
+        root = ET.fromstring("<characteristics><subtlety>5</subtlety></characteristics>")
         ch = Characteristics.from_element(root)
         assert ch.subtlety == 5
         assert ch.malignancy == 0  # absent → 0
@@ -173,14 +182,20 @@ class TestRasteriseNodule:
         nodule = LIDCNodule(
             nodule_id="N",
             rois=[
-                LIDCROI(image_sop_uid="UID-A", image_z_position=-110.0,
-                        inclusion=True,
-                        x_coords=[250.0, 260.0, 260.0, 250.0],
-                        y_coords=[260.0, 260.0, 270.0, 270.0]),
-                LIDCROI(image_sop_uid="UID-B", image_z_position=-112.5,
-                        inclusion=True,
-                        x_coords=[252.0, 258.0, 258.0, 252.0],
-                        y_coords=[262.0, 262.0, 268.0, 268.0]),
+                LIDCROI(
+                    image_sop_uid="UID-A",
+                    image_z_position=-110.0,
+                    inclusion=True,
+                    x_coords=[250.0, 260.0, 260.0, 250.0],
+                    y_coords=[260.0, 260.0, 270.0, 270.0],
+                ),
+                LIDCROI(
+                    image_sop_uid="UID-B",
+                    image_z_position=-112.5,
+                    inclusion=True,
+                    x_coords=[252.0, 258.0, 258.0, 252.0],
+                    y_coords=[262.0, 262.0, 268.0, 268.0],
+                ),
             ],
         )
         uid2z = {"UID-A": 5, "UID-B": 6}
@@ -199,14 +214,16 @@ class TestRasteriseNodule:
         nodule = LIDCNodule(
             nodule_id="N",
             rois=[
-                LIDCROI(image_sop_uid="UID-NOT-IN-MAP",
-                        image_z_position=-110.0, inclusion=True,
-                        x_coords=[1.0, 5.0, 5.0, 1.0],
-                        y_coords=[1.0, 1.0, 5.0, 5.0]),
+                LIDCROI(
+                    image_sop_uid="UID-NOT-IN-MAP",
+                    image_z_position=-110.0,
+                    inclusion=True,
+                    x_coords=[1.0, 5.0, 5.0, 1.0],
+                    y_coords=[1.0, 1.0, 5.0, 5.0],
+                ),
             ],
         )
-        mask = _rasterise_nodule(nodule, uid_to_z={"OTHER": 0},
-                                  shape3d=(10, 64, 64))
+        mask = _rasterise_nodule(nodule, uid_to_z={"OTHER": 0}, shape3d=(10, 64, 64))
         assert mask.sum() == 0
 
 
@@ -216,14 +233,16 @@ class TestStaple:
         from qradiomics.io.lidc import staple_consensus
 
         shape = (10, 10, 10)
-        truth = np.zeros(shape, np.uint8); truth[3:7, 3:7, 3:7] = 1
+        truth = np.zeros(shape, np.uint8)
+        truth[3:7, 3:7, 3:7] = 1
         np.random.seed(0)
         masks = []
         for sens_target in (0.95, 0.90, 0.85, 0.80):
             m = truth.copy()
             m[(truth == 1) & (np.random.rand(*shape) > sens_target)] = 0
             m[(truth == 0) & (np.random.rand(*shape) > 0.99)] = 1
-            img = sitk.GetImageFromArray(m); img.SetSpacing((1, 1, 1))
+            img = sitk.GetImageFromArray(m)
+            img.SetSpacing((1, 1, 1))
             masks.append(img)
 
         cons, sens, spec = staple_consensus(masks, threshold=0.5)

@@ -43,7 +43,7 @@ def convert():
     type=click.Choice(["auto", "CT", "PT", "MR", "CBCT", "OT"]),
     default="auto",
     help="Force a modality. 'auto' (default) reads it from the first slice. "
-         "PT routes through SUV conversion (qradiomics.io.dicom.read_pet_suv).",
+    "PT routes through SUV conversion (qradiomics.io.dicom.read_pet_suv).",
 )
 @click.option(
     "--raw-output",
@@ -51,7 +51,20 @@ def convert():
     default=None,
     help="(PT only) Additionally write the raw (pre-SUV) NRRD here.",
 )
-def dicom_series(input_dir, output, modality, raw_output):
+@click.option(
+    "--suv-type",
+    type=click.Choice(["BW", "LBM", "LBMJAMES128", "LBMJANMA", "IBW", "BSA"], case_sensitive=False),
+    default="BW",
+    show_default=True,
+    help="(PT only) Target IBSI-SUV v3.1 normalization type.",
+)
+@click.option(
+    "--strict-suv/--lenient-suv",
+    default=False,
+    show_default=True,
+    help="(PT only) Enforce strict IBSI-SUV v3.1 validation without QIBA fallback.",
+)
+def dicom_series(input_dir, output, modality, raw_output, suv_type, strict_suv):
     """Convert a DICOM series directory to a single NRRD volume.
 
     \b
@@ -81,6 +94,7 @@ def dicom_series(input_dir, output, modality, raw_output):
     if modality == "auto":
         try:
             import pydicom
+
             for p in sorted(input_path.iterdir()):
                 if not p.is_file():
                     continue
@@ -97,13 +111,14 @@ def dicom_series(input_dir, output, modality, raw_output):
 
     if detected == "PT":
         from qradiomics.io.dicom import read_pet_suv
-        result = read_pet_suv(input_path)
+
+        result = read_pet_suv(input_path, suv_type=suv_type, strict=strict_suv)
         sitk.WriteImage(result.image, str(output_path))
         if raw_output:
             Path(raw_output).parent.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(result.raw_image, str(raw_output))
         click.echo(
-            f"Converted PET series -> {output_path} (SUVbw, "
+            f"Converted PET series -> {output_path} (SUV{result.suv_type.lower()}, "
             f"units={result.units}, factor={result.suv_factor:.6g}, "
             f"estimated={result.estimated}, "
             f"size={result.image.GetSize()}, "
@@ -198,6 +213,7 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
 
     # Ensure RTSTRUCT has a valid preamble (often missing from TCIA downloads)
     from qradiomics.io.dicom import fix_dicom_preamble
+
     fix_dicom_preamble(rt_path, verbose=True)
 
     # rt-utils reads the reference CT series here; if that directory holds no
@@ -210,8 +226,8 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
         )
     except Exception as e:
         click.echo(
-            f'Could not build RTSTRUCT from {rt_path} against CT series in '
-            f'{dicom_dir}: {e}. (Check that the reference CT is readable).',
+            f"Could not build RTSTRUCT from {rt_path} against CT series in "
+            f"{dicom_dir}: {e}. (Check that the reference CT is readable).",
             err=True,
         )
         raise SystemExit(1)
@@ -244,9 +260,7 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
             click.echo(f"  ROI '{target_roi}' matched '{ci_match}' (case-insensitive)")
             target_roi = ci_match
         else:
-            click.echo(
-                f"ROI '{target_roi}' not in structure set. Available: {roi_names}", err=True
-            )
+            click.echo(f"ROI '{target_roi}' not in structure set. Available: {roi_names}", err=True)
             raise SystemExit(1)
 
     mask_zyx = rt.get_roi_mask_by_name(target_roi)
@@ -274,7 +288,7 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
     if mask.shape != target_shape:
         diff = mask.shape[0] - target_shape[0]
         if diff > 0:
-            mask = mask[:target_shape[0]]
+            mask = mask[: target_shape[0]]
         elif diff < 0:
             pad = np.zeros((-diff, target_shape[1], target_shape[2]), dtype=mask.dtype)
             mask = np.concatenate([mask, pad], axis=0)
@@ -382,7 +396,11 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
         for img in sorted(root.glob(image_glob)):
             if not img.is_file():
                 continue
-            pid = img.name[: -len(img_suffix)] if img_suffix and img.name.endswith(img_suffix) else img.stem
+            pid = (
+                img.name[: -len(img_suffix)]
+                if img_suffix and img.name.endswith(img_suffix)
+                else img.stem
+            )
             msk = root / f"{pid}{msk_suffix}"
             if msk.is_file() and msk != img:
                 rows.append(
@@ -408,7 +426,9 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
 
     click.echo(f"Wrote manifest with {len(rows)} patient(s) -> {output_path}")
     if skipped:
-        click.echo(f"  skipped {len(skipped)} dir(s) without matching files (first 5): {skipped[:5]}")
+        click.echo(
+            f"  skipped {len(skipped)} dir(s) without matching files (first 5): {skipped[:5]}"
+        )
 
 
 @convert.command("fix-preamble")
@@ -443,25 +463,50 @@ def fix_preamble(dicom_path):
 
 
 @convert.command("from-manifest")
-@click.option("--manifest", "-m", "manifest_path", required=True,
-              type=click.Path(exists=True, dir_okay=False),
-              help="Input manifest CSV with columns (patient_id, modality, "
-                   "image_path, mask_path) — image_path is a DICOM-series directory, "
-                   "mask_path is an RTSTRUCT .dcm file or directory containing one.")
-@click.option("--nrrd-dir", "-d", required=True, type=click.Path(),
-              help="Output NRRD root. Per-patient files land at "
-                   "<nrrd-dir>/<patient_id>_<modality>.nrrd and "
-                   "<nrrd-dir>/<patient_id>_<roi>-label.nrrd")
-@click.option("--roi", default="GTV-1", show_default=True,
-              help="RTSTRUCT ROI name to extract")
-@click.option("--output", "-o", "output_manifest", required=True, type=click.Path(),
-              help="Output manifest CSV pointing at the converted NRRDs")
-@click.option("--skip-existing/--overwrite", default=True, show_default=True,
-              help="Skip rows whose NRRDs already exist")
-@click.option("--jobs", "-j", default=1, type=int, show_default=True,
-              help="Parallel workers (1 = sequential). I/O- and CPU-bound; 4-8 is a "
-                   "good default on a workstation, scale up to nproc for batch "
-                   "conversion of large TCIA cohorts.")
+@click.option(
+    "--manifest",
+    "-m",
+    "manifest_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Input manifest CSV with columns (patient_id, modality, "
+    "image_path, mask_path) — image_path is a DICOM-series directory, "
+    "mask_path is an RTSTRUCT .dcm file or directory containing one.",
+)
+@click.option(
+    "--nrrd-dir",
+    "-d",
+    required=True,
+    type=click.Path(),
+    help="Output NRRD root. Per-patient files land at "
+    "<nrrd-dir>/<patient_id>_<modality>.nrrd and "
+    "<nrrd-dir>/<patient_id>_<roi>-label.nrrd",
+)
+@click.option("--roi", default="GTV-1", show_default=True, help="RTSTRUCT ROI name to extract")
+@click.option(
+    "--output",
+    "-o",
+    "output_manifest",
+    required=True,
+    type=click.Path(),
+    help="Output manifest CSV pointing at the converted NRRDs",
+)
+@click.option(
+    "--skip-existing/--overwrite",
+    default=True,
+    show_default=True,
+    help="Skip rows whose NRRDs already exist",
+)
+@click.option(
+    "--jobs",
+    "-j",
+    default=1,
+    type=int,
+    show_default=True,
+    help="Parallel workers (1 = sequential). I/O- and CPU-bound; 4-8 is a "
+    "good default on a workstation, scale up to nproc for batch "
+    "conversion of large TCIA cohorts.",
+)
 def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existing, jobs):
     """Batch-convert every (image_dir, rtstruct) row from an input manifest
     into an NRRD pair (image + ROI label), emitting a new manifest that
@@ -515,32 +560,63 @@ def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existi
         out_mask = nrrd_root / f"{pid}_{roi}-label.nrrd"
 
         if skip_existing and out_image.is_file() and out_mask.is_file():
-            return {"pid": pid, "status": "cached", "row":
-                    [pid, modality, str(out_image), str(out_mask)]}
+            return {
+                "pid": pid,
+                "status": "cached",
+                "row": [pid, modality, str(out_image), str(out_mask)],
+            }
 
         try:
             if not (skip_existing and out_image.is_file()):
                 subprocess.run(
-                    [sys.executable, "-m", "qradiomics.cli.main", "convert", "dicom-series",
-                     "--input", image_path, "--output", str(out_image)],
-                    check=True, capture_output=True,
+                    [
+                        sys.executable,
+                        "-m",
+                        "qradiomics.cli.main",
+                        "convert",
+                        "dicom-series",
+                        "--input",
+                        image_path,
+                        "--output",
+                        str(out_image),
+                    ],
+                    check=True,
+                    capture_output=True,
                 )
             if not (skip_existing and out_mask.is_file()):
                 subprocess.run(
-                    [sys.executable, "-m", "qradiomics.cli.main", "convert", "rtstruct",
-                     "--dicom-dir", image_path, "--rtstruct", mask_path,
-                     "--roi", roi, "--output", str(out_mask)],
-                    check=True, capture_output=True,
+                    [
+                        sys.executable,
+                        "-m",
+                        "qradiomics.cli.main",
+                        "convert",
+                        "rtstruct",
+                        "--dicom-dir",
+                        image_path,
+                        "--rtstruct",
+                        mask_path,
+                        "--roi",
+                        roi,
+                        "--output",
+                        str(out_mask),
+                    ],
+                    check=True,
+                    capture_output=True,
                 )
-            return {"pid": pid, "status": "written", "row":
-                    [pid, modality, str(out_image), str(out_mask)]}
+            return {
+                "pid": pid,
+                "status": "written",
+                "row": [pid, modality, str(out_image), str(out_mask)],
+            }
         except subprocess.CalledProcessError as e:
             tail = (e.stderr or b"").decode(errors="replace").strip().splitlines()[-1:] or [""]
-            return {"pid": pid, "status": "failed",
-                    "reason": f"exit {e.returncode}: {tail[0][-200:]}"}
+            return {
+                "pid": pid,
+                "status": "failed",
+                "reason": f"exit {e.returncode}: {tail[0][-200:]}",
+            }
         except Exception as e:  # noqa: BLE001
-            return {"pid": pid, "status": "failed",
-                    "reason": f"{type(e).__name__}: {e}"}
+            return {"pid": pid, "status": "failed", "reason": f"{type(e).__name__}: {e}"}
 
     results_by_pid = {}
     if jobs <= 1:

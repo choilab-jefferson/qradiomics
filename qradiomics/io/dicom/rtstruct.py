@@ -71,34 +71,26 @@ def load_rtstruct_roi(
     roi_number = _find_roi_number(rt, roi_name, case_insensitive=case_insensitive)
     if roi_number is None:
         available = [str(r.ROIName) for r in getattr(rt, "StructureSetROISequence", [])]
-        raise ValueError(
-            f"ROI {roi_name!r} not found in {rt_dicom_path}. Available: {available}"
-        )
+        raise ValueError(f"ROI {roi_name!r} not found in {rt_dicom_path}. Available: {available}")
 
     contour_seq = _contour_sequence_for_roi(rt, roi_number)
     if not contour_seq:
-        raise ValueError(
-            f"ROI {roi_name!r} (#{roi_number}) has no contour sequence."
-        )
+        raise ValueError(f"ROI {roi_name!r} (#{roi_number}) has no contour sequence.")
 
     by_slice = _group_polygons_by_slice(contour_seq)
     if not by_slice:
-        raise ValueError(
-            f"ROI {roi_name!r} contains no CLOSED_PLANAR contours."
-        )
+        raise ValueError(f"ROI {roi_name!r} contains no CLOSED_PLANAR contours.")
 
     size = reference_image.GetSize()  # (X, Y, Z)
     mask_arr = np.zeros((size[2], size[1], size[0]), dtype=np.uint8)
 
-    yy, xx = np.mgrid[0:size[1], 0:size[0]]
+    yy, xx = np.mgrid[0 : size[1], 0 : size[0]]
     sample_points = np.column_stack([xx.ravel(), yy.ravel()])
     for z_mm, polygons in by_slice.items():
         z_idx = _z_index_for(reference_image, z_mm)
         if z_idx is None or z_idx < 0 or z_idx >= size[2]:
             continue
-        slice_mask = _rasterize_even_odd(
-            reference_image, polygons, sample_points, size[1], size[0]
-        )
+        slice_mask = _rasterize_even_odd(reference_image, polygons, sample_points, size[1], size[0])
         if slice_mask is None:
             continue
         mask_arr[z_idx] |= slice_mask

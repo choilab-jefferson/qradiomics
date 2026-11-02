@@ -20,6 +20,7 @@ from qradiomics.phantom_fda.layouts import LAYOUT_4_BY_ID
 # Layout shape
 # ---------------------------------------------------------------------------
 
+
 def test_layout_4_has_twelve_nodules():
     assert len(LAYOUT_4) == 12
     assert isinstance(LAYOUT_4, Layout)
@@ -55,6 +56,7 @@ def test_full_factorial_two_diameters_x_three_shapes_x_two_densities():
 # ---------------------------------------------------------------------------
 # Per-nodule integrity
 # ---------------------------------------------------------------------------
+
 
 def test_each_nodule_has_unique_id_and_lung_assigned():
     ids = [n.nodule_id for n in LAYOUT_4.nodules]
@@ -99,13 +101,16 @@ def test_included_subset_drops_the_defect():
 import math
 
 
-@pytest.mark.parametrize("diameter, lo, hi", [
-    # 10 mm sphere = 524 mm^3; manufactured values are non-spherical
-    # and span +1% to +6% over the sphere baseline.
-    (10.0, 500.0, 600.0),
-    # 20 mm sphere = 4189 mm^3.
-    (20.0, 4100.0, 4500.0),
-])
+@pytest.mark.parametrize(
+    "diameter, lo, hi",
+    [
+        # 10 mm sphere = 524 mm^3; manufactured values are non-spherical
+        # and span +1% to +6% over the sphere baseline.
+        (10.0, 500.0, 600.0),
+        # 20 mm sphere = 4189 mm^3.
+        (20.0, 4100.0, 4500.0),
+    ],
+)
 def test_volumes_within_plausible_range_for_diameter(diameter, lo, hi):
     for n in LAYOUT_4.nodules:
         if n.diameter_mm != diameter:
@@ -121,11 +126,9 @@ def test_nominal_sphere_volumes_within_1_to_10_percent_of_measured():
     transcription honest."""
     for n in LAYOUT_4.nodules:
         r = n.diameter_mm / 2.0
-        v_sphere = (4.0 / 3.0) * math.pi * r ** 3
+        v_sphere = (4.0 / 3.0) * math.pi * r**3
         rel = (n.volume_mm3 - v_sphere) / v_sphere
-        assert -0.05 <= rel <= 0.10, (
-            f"nodule #{n.nodule_id}: |V-V_sphere|/V_sphere = {rel:+.1%}"
-        )
+        assert -0.05 <= rel <= 0.10, f"nodule #{n.nodule_id}: |V-V_sphere|/V_sphere = {rel:+.1%}"
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +139,7 @@ def test_nominal_sphere_volumes_within_1_to_10_percent_of_measured():
 # physically plausible as mm in the DICOM world frame, not as voxel
 # indices. Asserting the per-axis spans guards against future edits
 # that might silently re-interpret the manifest.
+
 
 def test_x_span_matches_phantom_thorax_width():
     xs = [n.center_mm[0] for n in LAYOUT_4.nodules]
@@ -150,15 +154,14 @@ def test_y_span_matches_phantom_thorax_depth():
 
 
 def test_z_span_matches_phantom_length_with_rows_separated_by_shape():
-    zs_by_shape = {
-        s: [n.center_mm[2] for n in LAYOUT_4.by_shape(s)]
-        for s in ("ELL", "LOB", "SPI")
-    }
+    zs_by_shape = {s: [n.center_mm[2] for n in LAYOUT_4.by_shape(s)] for s in ("ELL", "LOB", "SPI")}
     # The vasculature insert has three rows; the manifest's z column
     # clusters the four ELL nodules around z ~ 100-180, LOB around
     # z ~ 270-350, SPI around z ~ 475-530. Re-check whenever the
     # manifest is edited.
-    assert max(zs_by_shape["ELL"]) < min(zs_by_shape["LOB"]), \
-        "ELL row should be inferior to the LOB row in z"
-    assert max(zs_by_shape["LOB"]) < min(zs_by_shape["SPI"]), \
-        "LOB row should be inferior to the SPI row in z"
+    assert max(zs_by_shape["ELL"]) < min(
+        zs_by_shape["LOB"]
+    ), "ELL row should be inferior to the LOB row in z"
+    assert max(zs_by_shape["LOB"]) < min(
+        zs_by_shape["SPI"]
+    ), "LOB row should be inferior to the SPI row in z"

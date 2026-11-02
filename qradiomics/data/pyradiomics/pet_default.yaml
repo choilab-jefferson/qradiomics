@@ -1,4 +1,14 @@
-# PET.yaml
+# PET.yaml -- PET PyRadiomics parameters, QRadiomics bundled default.
+#
+# Mirrors the lab-curated JeffLungRadiomics defaults
+# (JeffLungRadiomics/src/jeffrdx/config/radiomics_configs/pet_default.yaml), as fixed in
+# commit 02e4e3af (2026-03-18): that commit moved binWidth 0.5 -> 0.25 and normalize
+# true -> false.
+#
+# binWidth 0.25 is the SUV setting. `normalize` must stay false: normalizing z-scores the
+# intensities to std ~1, which both discards the physiological SUV calibration the bin width
+# is chosen against and collapses the ROI into ~1 bin, degenerating every texture feature.
+
 imageType:
   Original: {}
   Exponential: {}
@@ -11,5 +21,21 @@ imageType:
   Wavelet: {}
 
 setting:
+  # Canonical JeffLuRa block -- keep in sync with the reference config above.
   normalize: false
   binWidth: 0.25
+  minimumROIDimensions: 2
+  minimumROISize: 10
+  label: 1
+  interpolator: sitkBSpline
+  padDistance: 5
+  distances: [1]
+  force2D: false
+
+  # QRadiomics-local additions (not in the JeffLuRa reference), matching ct_default.yaml and
+  # pet_original_only.yaml: tolerate sub-mm image/mask geometry drift from DICOM->NRRD
+  # conversion rather than failing. No effect on binning or feature values.
+  geometryTolerance: 1.0e-3
+  correctMask: true
+
+# featureClass not specified -> all classes extracted

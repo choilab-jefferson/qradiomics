@@ -70,8 +70,6 @@ def load_dicom_series(
         series_uid = sorted(uids)[0]
     files = reader.GetGDCMSeriesFileNames(directory, series_uid)
     if not files:
-        raise ValueError(
-            f"SeriesInstanceUID {series_uid!r} produced 0 files under {directory!r}."
-        )
+        raise ValueError(f"SeriesInstanceUID {series_uid!r} produced 0 files under {directory!r}.")
     reader.SetFileNames(files)
     return reader.Execute()

@@ -35,19 +35,25 @@ def phantom_manifest(tmp_path):
 
 def _classes(csv_path):
     import pandas as pd
+
     cols = [c for c in pd.read_csv(csv_path).columns if c != "patient_id"]
     return sorted({c.split("_")[1] for c in cols}), len(cols)
 
 
 def test_feature_classes_restricts_output(phantom_manifest, tmp_path):
-    d_all = tmp_path / "all"; d_all.mkdir()
-    d_fs = tmp_path / "fs"; d_fs.mkdir()
+    d_all = tmp_path / "all"
+    d_all.mkdir()
+    d_fs = tmp_path / "fs"
+    d_fs.mkdir()
     RadiomicsExtractor().run_extraction(
         uuid4(), phantom_manifest, d_all, {"image_types": ["Original"]}, 1
     )
     RadiomicsExtractor().run_extraction(
-        uuid4(), phantom_manifest, d_fs,
-        {"image_types": ["Original"], "feature_classes": ["firstorder", "shape"]}, 1,
+        uuid4(),
+        phantom_manifest,
+        d_fs,
+        {"image_types": ["Original"], "feature_classes": ["firstorder", "shape"]},
+        1,
     )
     classes_all, n_all = _classes(d_all / "features.csv")
     classes_fs, n_fs = _classes(d_fs / "features.csv")

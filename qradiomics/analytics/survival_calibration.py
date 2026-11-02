@@ -94,7 +94,7 @@ def fold_integrated_brier(cph, X_te, t_train, e_train, t_test, e_test) -> float:
             return float("nan")
 
         sf = cph.predict_survival_function(X_te, times=grid)  # index=times, cols=samples
-        est = np.asarray(sf.T.values, dtype=float)            # samples x times
+        est = np.asarray(sf.T.values, dtype=float)  # samples x times
         return float(integrated_brier_score(y_tr, y_te, est, grid))
     except Exception:
         return float("nan")

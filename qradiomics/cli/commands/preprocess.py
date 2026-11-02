@@ -34,6 +34,7 @@ def _align_mask_to_image(image, mask):
     a separate pre-padding stage.
     """
     import SimpleITK as sitk
+
     if (
         mask.GetSize() == image.GetSize()
         and mask.GetSpacing() == image.GetSpacing()
@@ -66,9 +67,10 @@ def _crop_one(args):
         labels = list(stats.GetLabels())
         if not labels:
             return (pid, None, None, "empty_mask")
-        bbox = np.array(stats.GetBoundingBox(labels[0]))   # (x, y, z, sx, sy, sz)
+        bbox = np.array(stats.GetBoundingBox(labels[0]))  # (x, y, z, sx, sy, sz)
         pad_vox = (pad_mm / np.array(image.GetSpacing())).astype("int")
-        start = bbox[:3]; size = bbox[3:]
+        start = bbox[:3]
+        size = bbox[3:]
         end = start + size
         lower = np.maximum(start - pad_vox, 0)
         upper = np.maximum(np.array(image.GetSize()) - end - pad_vox, 0)
@@ -112,20 +114,42 @@ def _resample(image, spacing_xyz, is_label):
 
 
 @click.command()
-@click.option("--manifest", "-m", required=True, type=click.Path(exists=True, dir_okay=False),
-              help="Manifest CSV (patient_id, modality, image_path, mask_path)")
-@click.option("--output", "-o", required=True, type=click.Path(),
-              help="Output directory for cropped/resampled NRRDs")
-@click.option("--roi-name", default="GTV",
-              help="ROI suffix used in output filenames (default: GTV)")
-@click.option("--pad-mm", default=20.0, type=float,
-              help="Padding around the bounding box, in millimetres (default 20)")
-@click.option("--resample", default=None, type=float,
-              help="Isotropic spacing in mm (e.g. 1.0). Omit to skip resampling.")
-@click.option("--jobs", "-j", default=1, type=int,
-              help="Worker processes (default 1).")
-@click.option("--out-manifest", default=None, type=click.Path(),
-              help="If set, also write a new manifest CSV pointing at the cropped pairs.")
+@click.option(
+    "--manifest",
+    "-m",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Manifest CSV (patient_id, modality, image_path, mask_path)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output directory for cropped/resampled NRRDs",
+)
+@click.option(
+    "--roi-name", default="GTV", help="ROI suffix used in output filenames (default: GTV)"
+)
+@click.option(
+    "--pad-mm",
+    default=20.0,
+    type=float,
+    help="Padding around the bounding box, in millimetres (default 20)",
+)
+@click.option(
+    "--resample",
+    default=None,
+    type=float,
+    help="Isotropic spacing in mm (e.g. 1.0). Omit to skip resampling.",
+)
+@click.option("--jobs", "-j", default=1, type=int, help="Worker processes (default 1).")
+@click.option(
+    "--out-manifest",
+    default=None,
+    type=click.Path(),
+    help="If set, also write a new manifest CSV pointing at the cropped pairs.",
+)
 def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest):
     """Crop and optionally resample image+mask pairs from a manifest.
 
@@ -148,8 +172,10 @@ def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest)
         for i, w in enumerate(work, 1):
             print(f"  preprocess [{i}/{total}] {w[0]} ...", flush=True)
             r = _crop_one(w)
-            print(f"  preprocess [{i}/{total}] {r[0]} {'ok' if not r[3] else 'FAIL: ' + r[3]}",
-                  flush=True)
+            print(
+                f"  preprocess [{i}/{total}] {r[0]} {'ok' if not r[3] else 'FAIL: ' + r[3]}",
+                flush=True,
+            )
             results.append(r)
     else:
         done = 0
@@ -158,8 +184,11 @@ def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest)
             for fut in as_completed(futs):
                 done += 1
                 r = fut.result()
-                print(f"  preprocess [{done}/{total}] {r[0]} "
-                      f"{'ok' if not r[3] else 'FAIL: ' + r[3]}", flush=True)
+                print(
+                    f"  preprocess [{done}/{total}] {r[0]} "
+                    f"{'ok' if not r[3] else 'FAIL: ' + r[3]}",
+                    flush=True,
+                )
                 results.append(r)
                 sys.stdout.flush()
 
@@ -169,8 +198,9 @@ def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest)
             w.writeheader()
             for pid, ct, msk, err in results:
                 if err is None and ct and msk:
-                    w.writerow({"patient_id": pid, "modality": "CT",
-                                "image_path": ct, "mask_path": msk})
+                    w.writerow(
+                        {"patient_id": pid, "modality": "CT", "image_path": ct, "mask_path": msk}
+                    )
         click.echo(f"Wrote cropped manifest → {out_manifest}")
 
     ok = sum(1 for r in results if not r[3])

@@ -39,8 +39,8 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from pipelines.common.engine_extract import extract_features_multi
 from pipelines.common.parallel import run_parallel_rows
-from qradiomics.atomic import extract_features
 from qradiomics.io.lidc import (
     parse_lidc_xml,
     scan_lidc_dir,
@@ -73,7 +73,7 @@ def _patient_dicom_dir(lidc_src: Path, pid: str) -> Path | None:
 
 def _extract_one_patient(args) -> list[dict]:
     """Worker: emit one features row per (reader, nodule) for a patient."""
-    pid, patient_dir, lidc_src, params_file, min_voxels = args
+    pid, patient_dir, lidc_src, params_file, min_voxels, engine = args
     rows: list[dict] = []
     try:
         patient_dir = Path(patient_dir)
@@ -128,8 +128,8 @@ def _extract_one_patient(args) -> list[dict]:
 
                 # Atomic radiomics
                 try:
-                    feats = extract_features(
-                        ct, msk_img, params_file=params_file,
+                    feats = extract_features_multi(
+                        ct, msk_img, engine=engine, params_file=params_file,
                         label=1, geometry_tolerance=1e-3)
                     for k, v in feats.items():
                         row[k] = v
@@ -175,6 +175,10 @@ def main() -> int:
                    help="PyRadiomics parameter YAML (default: bundled extractor defaults).")
     p.add_argument("--min-voxels", type=int, default=8,
                    help="Skip nodules with < this many voxels (mesh failure guard).")
+    p.add_argument("--engine", default=None,
+                   help="Extraction engine(s): pyradiomics (default), pysera, "
+                        "rtools, a comma-list, or 'all'. Omit for unchanged "
+                        "PyRadiomics-only behaviour.")
     p.add_argument("--jobs", "-j", type=int, default=8)
     p.add_argument("--limit", type=int, default=None,
                    help="Stop after N patients.")
@@ -188,7 +192,7 @@ def main() -> int:
     print(f"found {len(patients)} converted patients under {lidc_out}",
           file=sys.stderr)
 
-    work = [(pat.name, str(pat), args.lidc_src, args.params, args.min_voxels)
+    work = [(pat.name, str(pat), args.lidc_src, args.params, args.min_voxels, args.engine)
             for pat in patients]
 
     def _is_ok(rows: list[dict]) -> bool:

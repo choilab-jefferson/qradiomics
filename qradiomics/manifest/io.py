@@ -29,8 +29,8 @@ MANIFEST_COLUMNS = (
     "mask_tag",
     "mask_label",
     "mask_image_tag",  # which image the mask is meant for — supports
-                       # re-using one RTSTRUCT against multiple CBCT
-                       # timepoints when the user explicitly tags it.
+    # re-using one RTSTRUCT against multiple CBCT
+    # timepoints when the user explicitly tags it.
 )
 
 
@@ -75,9 +75,7 @@ def _flatten_study(
     for img in study.image_series:
         rts: List[RTStructureSet] = matched_rts.get(img.id, []) + matched_rts.get("__any__", [])
         if not rts:
-            rows.append(
-                _row(patient, course, study, timepoint, img, rt=None, roi=None)
-            )
+            rows.append(_row(patient, course, study, timepoint, img, rt=None, roi=None))
             continue
         for rt in rts:
             if not rt.rois:

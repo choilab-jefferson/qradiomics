@@ -128,8 +128,9 @@ backend/tools/bin/
 mcp_server.log
 mcp_errors_*.log
 
-# IKB/Claude
-.claude/
+# IKB/Claude (local settings/state stay ignored; tracked project skill is allow-listed)
+.claude/*
+!.claude/skills/
 CLAUDE.local.md
 
 # IDE

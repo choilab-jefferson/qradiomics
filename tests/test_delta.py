@@ -17,21 +17,21 @@ import pytest
 from qradiomics.delta import DeltaPair, compute_delta, compute_trend
 
 
-def _multi_tp_frame(patients=("A", "B"),
-                    tps=(("b", 0), ("f", 28)),
-                    roi="GTV"):
+def _multi_tp_frame(patients=("A", "B"), tps=(("b", 0), ("f", 28)), roi="GTV"):
     rows = []
     for pid in patients:
         for tp, day in tps:
             offset = 0 if tp == "b" else 5 if tp == "f" else 12
-            rows.append({
-                "patient_id": pid,
-                "roi_name": roi,
-                "timepoint": tp,
-                "relative_day": day,
-                "f1": 10.0 + offset,
-                "f2": 100.0 - offset,
-            })
+            rows.append(
+                {
+                    "patient_id": pid,
+                    "roi_name": roi,
+                    "timepoint": tp,
+                    "relative_day": day,
+                    "f1": 10.0 + offset,
+                    "f2": 100.0 - offset,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -63,8 +63,7 @@ class TestDelta:
 
     def test_feature_cols_subset(self):
         df = _multi_tp_frame()
-        d = compute_delta(df, DeltaPair(early="b", late="f"),
-                          feature_cols=["f1"])
+        d = compute_delta(df, DeltaPair(early="b", late="f"), feature_cols=["f1"])
         # Only f1 derived; f2 absent
         assert any("f1" in c for c in d.columns)
         assert not any("f2" in c for c in d.columns)
@@ -72,14 +71,31 @@ class TestDelta:
 
 class TestTrend:
     def test_three_timepoints_linear(self):
-        df = pd.DataFrame([
-            {"patient_id": "A", "roi_name": "GTV", "timepoint": "b",
-             "relative_day": 0, "f": 1.0},
-            {"patient_id": "A", "roi_name": "GTV", "timepoint": "m",
-             "relative_day": 14, "f": 4.0},
-            {"patient_id": "A", "roi_name": "GTV", "timepoint": "f",
-             "relative_day": 28, "f": 7.0},
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "patient_id": "A",
+                    "roi_name": "GTV",
+                    "timepoint": "b",
+                    "relative_day": 0,
+                    "f": 1.0,
+                },
+                {
+                    "patient_id": "A",
+                    "roi_name": "GTV",
+                    "timepoint": "m",
+                    "relative_day": 14,
+                    "f": 4.0,
+                },
+                {
+                    "patient_id": "A",
+                    "roi_name": "GTV",
+                    "timepoint": "f",
+                    "relative_day": 28,
+                    "f": 7.0,
+                },
+            ]
+        )
         t = compute_trend(df, time_index_col="relative_day")
         # slope (rise / run) for 1→7 over 0→28 = 6/28 ≈ 0.214
         slope_col = [c for c in t.columns if "slope" in c.lower() or "trend" in c.lower()][0]
@@ -88,12 +104,24 @@ class TestTrend:
     def test_two_timepoints_only(self):
         """With time_index_col missing, trend may fall back or yield NaN — just
         verify the call doesn't blow up."""
-        df = pd.DataFrame([
-            {"patient_id": "A", "roi_name": "GTV", "timepoint": "b",
-             "relative_day": 0, "f": 1.0},
-            {"patient_id": "A", "roi_name": "GTV", "timepoint": "f",
-             "relative_day": 28, "f": 7.0},
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "patient_id": "A",
+                    "roi_name": "GTV",
+                    "timepoint": "b",
+                    "relative_day": 0,
+                    "f": 1.0,
+                },
+                {
+                    "patient_id": "A",
+                    "roi_name": "GTV",
+                    "timepoint": "f",
+                    "relative_day": 28,
+                    "f": 7.0,
+                },
+            ]
+        )
         t = compute_trend(df, time_index_col="relative_day")
         # Should produce some result without crashing
         assert len(t) >= 1
@@ -124,8 +152,17 @@ class TestDeltaCLI:
         out = tmp_path / "delta.csv"
         res = CliRunner().invoke(
             delta,
-            ["-f", str(f), "--pair", "w4=week4-baseline",
-             "--with-trend", "--time-col", "relative_day", "-o", str(out)],
+            [
+                "-f",
+                str(f),
+                "--pair",
+                "w4=week4-baseline",
+                "--with-trend",
+                "--time-col",
+                "relative_day",
+                "-o",
+                str(out),
+            ],
         )
         assert res.exit_code == 0, res.output
         d = pd.read_csv(out)
@@ -136,8 +173,8 @@ class TestDeltaCLI:
         assert {"w4_f1", "w4_f2", "slope_f1", "slope_f2"} <= set(d.columns)
         assert not any("relative_day" in c for c in d.columns)
         row_a = d[d["patient_id"] == "A"].iloc[0]
-        assert row_a["w4_f1"] == 5.0            # 15 − 10
-        assert row_a["w4_f2"] == -10.0          # 90 − 100
+        assert row_a["w4_f1"] == 5.0  # 15 − 10
+        assert row_a["w4_f2"] == -10.0  # 90 − 100
         assert abs(row_a["slope_f1"] - 5.0 / 28.0) < 1e-9
 
     def test_delta_without_roi_name(self, tmp_path):
@@ -147,10 +184,7 @@ class TestDeltaCLI:
         from qradiomics.cli.commands.delta import delta
 
         f = tmp_path / "f.csv"
-        f.write_text(
-            "patient_id,timepoint,f1\n"
-            "A,baseline,10\nA,week4,15\n"
-        )
+        f.write_text("patient_id,timepoint,f1\n" "A,baseline,10\nA,week4,15\n")
         out = tmp_path / "d.csv"
         res = CliRunner().invoke(
             delta, ["-f", str(f), "--pair", "w4=week4-baseline", "-o", str(out)]

@@ -142,6 +142,7 @@ def test_merge_fails_gracefully_on_missing_features_file(tmp_clinical_days, tmp_
 # (qradiomics#10/#11 follow-up — acrin_local's fdg_uptake_pattern regression)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def tmp_clinical_classify_only(tmp_path):
     """Clinical CSV with a classify outcome and NO survival columns at all —
@@ -166,13 +167,17 @@ def test_merge_without_outcome_col_fails_as_before_on_classify_only_clinical(
         results,
         [
             "merge",
-            "--features", str(tmp_features),
-            "--clinical", str(tmp_clinical_classify_only),
-            "--output", str(tmp_path / "out.csv"),
+            "--features",
+            str(tmp_features),
+            "--clinical",
+            str(tmp_clinical_classify_only),
+            "--output",
+            str(tmp_path / "out.csv"),
         ],
     )
     assert result.exit_code != 0
     assert "Time column" in result.output
+
 
 def test_merge_with_outcome_col_succeeds_without_survival_columns(
     tmp_features, tmp_clinical_classify_only, tmp_path
@@ -183,10 +188,14 @@ def test_merge_with_outcome_col_succeeds_without_survival_columns(
         results,
         [
             "merge",
-            "--features", str(tmp_features),
-            "--clinical", str(tmp_clinical_classify_only),
-            "--outcome-col", "fdg_uptake_pattern",
-            "--output", str(output),
+            "--features",
+            str(tmp_features),
+            "--clinical",
+            str(tmp_clinical_classify_only),
+            "--outcome-col",
+            "fdg_uptake_pattern",
+            "--output",
+            str(output),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -207,19 +216,21 @@ def test_merge_outcome_col_missing_from_clinical_errors(
         results,
         [
             "merge",
-            "--features", str(tmp_features),
-            "--clinical", str(tmp_clinical_classify_only),
-            "--outcome-col", "does_not_exist",
-            "--output", str(tmp_path / "out.csv"),
+            "--features",
+            str(tmp_features),
+            "--clinical",
+            str(tmp_clinical_classify_only),
+            "--outcome-col",
+            "does_not_exist",
+            "--output",
+            str(tmp_path / "out.csv"),
         ],
     )
     assert result.exit_code != 0
     assert "does_not_exist" in result.output
 
 
-def test_merge_outcome_col_alongside_survival_columns(
-    tmp_features, tmp_clinical_days, tmp_path
-):
+def test_merge_outcome_col_alongside_survival_columns(tmp_features, tmp_clinical_days, tmp_path):
     """A cohort with both survival columns and an extra outcome-col keeps both."""
     clinical = tmp_path / "clinical_both.csv"
     clinical.write_text(
@@ -233,13 +244,20 @@ def test_merge_outcome_col_alongside_survival_columns(
         results,
         [
             "merge",
-            "--features", str(tmp_features),
-            "--clinical", str(clinical),
-            "--clinical-id-col", "PatientID",
-            "--time-col", "Survival.time",
-            "--event-col", "deadstatus.event",
-            "--outcome-col", "risk_group",
-            "--output", str(output),
+            "--features",
+            str(tmp_features),
+            "--clinical",
+            str(clinical),
+            "--clinical-id-col",
+            "PatientID",
+            "--time-col",
+            "Survival.time",
+            "--event-col",
+            "deadstatus.event",
+            "--outcome-col",
+            "risk_group",
+            "--output",
+            str(output),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -249,9 +267,7 @@ def test_merge_outcome_col_alongside_survival_columns(
     assert "risk_group" in rows[0]
 
 
-def test_merge_outcome_col_deduped_against_event_col(
-    tmp_features, tmp_clinical_days, tmp_path
-):
+def test_merge_outcome_col_deduped_against_event_col(tmp_features, tmp_clinical_days, tmp_path):
     """--outcome-col equal to the (derived) event column name doesn't
     duplicate the column in the output."""
     runner = CliRunner()
@@ -260,13 +276,20 @@ def test_merge_outcome_col_deduped_against_event_col(
         results,
         [
             "merge",
-            "--features", str(tmp_features),
-            "--clinical", str(tmp_clinical_days),
-            "--clinical-id-col", "PatientID",
-            "--time-col", "Survival.time",
-            "--event-col", "deadstatus.event",
-            "--outcome-col", "OS_event",
-            "--output", str(output),
+            "--features",
+            str(tmp_features),
+            "--clinical",
+            str(tmp_clinical_days),
+            "--clinical-id-col",
+            "PatientID",
+            "--time-col",
+            "Survival.time",
+            "--event-col",
+            "deadstatus.event",
+            "--outcome-col",
+            "OS_event",
+            "--output",
+            str(output),
         ],
     )
     assert result.exit_code == 0, result.output

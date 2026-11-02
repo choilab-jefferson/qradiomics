@@ -26,9 +26,7 @@ NamedPair = namedtuple("NamedPair", ["name", "minuend", "subtrahend"])
 def _parse_inline_pair(spec: str) -> NamedPair:
     """Parse 'name=minuend-subtrahend' → NamedPair."""
     if "=" not in spec or "-" not in spec.split("=", 1)[1]:
-        raise click.BadParameter(
-            f"invalid pair spec {spec!r}; expected name=minuend-subtrahend"
-        )
+        raise click.BadParameter(f"invalid pair spec {spec!r}; expected name=minuend-subtrahend")
     name, body = spec.split("=", 1)
     minuend, subtrahend = body.split("-", 1)
     return NamedPair(name.strip(), minuend.strip(), subtrahend.strip())
@@ -38,6 +36,7 @@ def _load_pairs_file(path: Path) -> List[NamedPair]:
     text = path.read_text()
     if path.suffix.lower() in (".yaml", ".yml"):
         import yaml
+
         data = yaml.safe_load(text)
     else:
         data = json.loads(text)
@@ -47,20 +46,39 @@ def _load_pairs_file(path: Path) -> List[NamedPair]:
 
 
 @click.command()
-@click.option("--features", "-f", "features_path", required=True,
-              type=click.Path(exists=True, dir_okay=False),
-              help="features.csv with patient_id + timepoint columns")
-@click.option("--pair", "pair_specs", multiple=True,
-              help="DeltaPair definition 'name=minuend-subtrahend'. Repeatable.")
-@click.option("--pairs-file", type=click.Path(exists=True, dir_okay=False),
-              default=None, help="JSON or YAML file with a list of "
-                                 "{name, minuend, subtrahend} dicts.")
-@click.option("--with-trend/--no-trend", default=False,
-              help="Also emit per-feature linear slope vs relative_day.")
-@click.option("--time-col", default="relative_day",
-              help="Numeric time column for trend computation (default: relative_day).")
-@click.option("--output", "-o", required=True, type=click.Path(),
-              help="Output CSV (one row per patient_id).")
+@click.option(
+    "--features",
+    "-f",
+    "features_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="features.csv with patient_id + timepoint columns",
+)
+@click.option(
+    "--pair",
+    "pair_specs",
+    multiple=True,
+    help="DeltaPair definition 'name=minuend-subtrahend'. Repeatable.",
+)
+@click.option(
+    "--pairs-file",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="JSON or YAML file with a list of " "{name, minuend, subtrahend} dicts.",
+)
+@click.option(
+    "--with-trend/--no-trend",
+    default=False,
+    help="Also emit per-feature linear slope vs relative_day.",
+)
+@click.option(
+    "--time-col",
+    default="relative_day",
+    help="Numeric time column for trend computation (default: relative_day).",
+)
+@click.option(
+    "--output", "-o", required=True, type=click.Path(), help="Output CSV (one row per patient_id)."
+)
 def delta(features_path, pair_specs, pairs_file, with_trend, time_col, output):
     """Compute delta and (optionally) trend features per patient.
 
@@ -81,8 +99,9 @@ def delta(features_path, pair_specs, pairs_file, with_trend, time_col, output):
     for spec in pair_specs:
         pairs.append(_parse_inline_pair(spec))
     if not pairs and not with_trend:
-        raise click.UsageError("Provide at least one --pair or --pairs-file, "
-                               "or pass --with-trend.")
+        raise click.UsageError(
+            "Provide at least one --pair or --pairs-file, " "or pass --with-trend."
+        )
 
     df = pd.read_csv(features_path)
     if "patient_id" not in df.columns or "timepoint" not in df.columns:
@@ -96,8 +115,7 @@ def delta(features_path, pair_specs, pairs_file, with_trend, time_col, output):
     # axis avoids emitting a meaningless delta/slope of e.g. relative_day.
     non_features = set(key_cols) | {"timepoint", time_col}
     feature_cols = [
-        c for c in df.columns
-        if c not in non_features and pd.api.types.is_numeric_dtype(df[c])
+        c for c in df.columns if c not in non_features and pd.api.types.is_numeric_dtype(df[c])
     ]
     if not feature_cols:
         raise click.UsageError("no numeric feature columns found to difference")
@@ -120,9 +138,7 @@ def delta(features_path, pair_specs, pairs_file, with_trend, time_col, output):
     if with_trend:
         if time_col not in df.columns:
             raise click.UsageError(f"--with-trend requested but column {time_col!r} missing")
-        t = compute_trend(
-            df, feature_cols=feature_cols, key_cols=key_cols, time_index_col=time_col
-        )
+        t = compute_trend(df, feature_cols=feature_cols, key_cols=key_cols, time_index_col=time_col)
         parts.append(t)
         click.echo(f"[delta] trend: slopes vs {time_col} → {len(t)} row(s)")
 

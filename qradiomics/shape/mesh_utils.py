@@ -14,8 +14,9 @@ from skimage.measure import marching_cubes
 @dataclass(frozen=True)
 class Mesh:
     """Triangular surface mesh."""
-    vertices: np.ndarray   # (V, 3) float32
-    faces: np.ndarray      # (F, 3) int32 — vertex indices
+
+    vertices: np.ndarray  # (V, 3) float32
+    faces: np.ndarray  # (F, 3) int32 — vertex indices
 
     @property
     def n_vertices(self) -> int:
@@ -26,8 +27,9 @@ class Mesh:
         return int(self.faces.shape[0])
 
 
-def voxel_to_mesh(volume: np.ndarray, level: float = 0.5,
-                  spacing: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> Mesh:
+def voxel_to_mesh(
+    volume: np.ndarray, level: float = 0.5, spacing: tuple[float, float, float] = (1.0, 1.0, 1.0)
+) -> Mesh:
     """Extract isosurface mesh via marching cubes.
 
     Args:
@@ -35,13 +37,12 @@ def voxel_to_mesh(volume: np.ndarray, level: float = 0.5,
         level: isolevel for marching cubes.
         spacing: (dz, dy, dx) voxel spacing in mm.
     """
-    verts, faces, _, _ = marching_cubes(volume.astype(np.float32),
-                                        level=level, spacing=spacing)
-    return Mesh(vertices=verts.astype(np.float32),
-                faces=faces.astype(np.int32))
+    verts, faces, _, _ = marching_cubes(volume.astype(np.float32), level=level, spacing=spacing)
+    return Mesh(vertices=verts.astype(np.float32), faces=faces.astype(np.int32))
 
 
 # ---- Basic geometric quantities -------------------------------------------
+
 
 def face_areas(mesh: Mesh) -> np.ndarray:
     """(F,) triangle area."""
@@ -87,6 +88,7 @@ def vertex_normals(mesh: Mesh) -> np.ndarray:
 
 # ---- Cotangent Laplacian (for conformal flows) ----------------------------
 
+
 def cotangent_laplacian(mesh: Mesh) -> csr_matrix:
     """Discrete cotangent-weighted Laplace-Beltrami operator (V × V sparse).
 
@@ -108,7 +110,9 @@ def cotangent_laplacian(mesh: Mesh) -> csr_matrix:
         dot = np.einsum("fk,fk->f", e1, e2)
         crs = np.cross(e1, e2)
         cot = 0.5 * dot / (np.linalg.norm(crs, axis=1) + 1e-12)
-        rows.extend([i, j]); cols.extend([j, i]); data.extend([-cot, -cot])
+        rows.extend([i, j])
+        cols.extend([j, i])
+        data.extend([-cot, -cot])
     rows = np.concatenate(rows)
     cols = np.concatenate(cols)
     data = np.concatenate(data)
@@ -120,6 +124,7 @@ def cotangent_laplacian(mesh: Mesh) -> csr_matrix:
 
 
 # ---- Vertex 1-ring neighbors ---------------------------------------------
+
 
 def vertex_adjacency(mesh: Mesh) -> list[list[int]]:
     """Return per-vertex list of neighbor vertex indices."""

@@ -1,9 +1,17 @@
-# This is an example of settings that can be used as a starting point for analyzing CT data. This is only intended as a
-# starting point and is not likely to be the optimal settings for your dataset. Some points in determining better values
-# are added as comments where appropriate
-
-# When adapting and using these settings for an analysis, be sure to add the PyRadiomics version used to allow you to
-# easily recreate your extraction at a later timepoint:
+# CT PyRadiomics parameters -- QRadiomics bundled default.
+#
+# These mirror the lab-curated JeffLungRadiomics defaults
+# (JeffLungRadiomics/src/jeffrdx/config/radiomics_configs/ct_default.yaml), as fixed in
+# commit 02e4e3af (2026-03-18): that commit dropped `normalize: true` + `normalizeScale: 100`
+# + `resampledPixelSpacing` and settled on binWidth 25 over raw Hounsfield units.
+#
+# Do NOT re-enable `normalize` here. Normalization z-scores the intensities to std ~1, so a
+# binWidth of 25 collapses the whole ROI into ~1 bin and every texture feature degenerates
+# (firstorder_Entropy ~= 0). CT is already in calibrated physical units, so the bin width is
+# chosen against HU directly.
+#
+# When adapting these settings for an analysis, record the PyRadiomics version used so the
+# extraction can be recreated at a later timepoint:
 
 # #############################  Extracted using PyRadiomics version: <version>  ######################################
 
@@ -19,8 +27,23 @@ imageType:
   Wavelet: {}
 
 setting:
+  # Canonical JeffLuRa block -- keep in sync with the reference config above.
   normalize: false
-  # normalizeScale: 100  # This allows you to use more or less the same bin width.
   binWidth: 25
-  geometryTolerance: 1e-3
+  minimumROIDimensions: 2
+  minimumROISize: 10
+  label: 1
+  interpolator: sitkBSpline
+  padDistance: 5
+  distances: [1]
+  force2D: false
+
+  # QRadiomics-local additions (not in the JeffLuRa reference). This package extracts from
+  # heterogeneous TCIA/PACS-derived pairs where DICOM->NRRD conversion leaves sub-mm float
+  # drift between image and mask geometry. These two turn that into a handled case instead of
+  # a hard failure; they do not touch binning or intensities, so feature values are unchanged
+  # whenever the geometry already agrees. Same pair is used in nsclc_ct.yaml.
+  geometryTolerance: 1.0e-3
   correctMask: true
+
+# featureClass not specified -> all classes extracted

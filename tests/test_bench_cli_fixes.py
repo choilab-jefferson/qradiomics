@@ -35,11 +35,13 @@ def tiny_csv(tmp_path):
     rng = np.random.default_rng(0)
     n = 20
     outcome = rng.integers(0, 2, size=n)
-    df = pd.DataFrame({
-        "feature_A": rng.normal(0, 1, size=n) + outcome * 1.5,
-        "feature_B": rng.normal(5, 2, size=n),
-        "outcome": outcome,
-    })
+    df = pd.DataFrame(
+        {
+            "feature_A": rng.normal(0, 1, size=n) + outcome * 1.5,
+            "feature_B": rng.normal(5, 2, size=n),
+            "outcome": outcome,
+        }
+    )
     path = tmp_path / "tiny.csv"
     df.to_csv(path, index=False)
     return path
@@ -49,44 +51,82 @@ def tiny_csv(tmp_path):
 # [0] --tpot-repeats lower-bound validation
 # ---------------------------------------------------------------------------
 
+
 class TestTpotRepeatsLowerBound:
     @pytest.mark.parametrize("bad_value", ["0", "-1", "-5"])
     def test_bench_rejects_non_positive_tpot_repeats(self, tiny_csv, bad_value):
-        result = CliRunner().invoke(bench, [
-            "--input", str(tiny_csv), "--outcome", "outcome",
-            "--tpot-repeats", bad_value,
-        ])
+        result = CliRunner().invoke(
+            bench,
+            [
+                "--input",
+                str(tiny_csv),
+                "--outcome",
+                "outcome",
+                "--tpot-repeats",
+                bad_value,
+            ],
+        )
         assert result.exit_code != 0
         assert "tpot-repeats" in result.output.lower() or "invalid value" in result.output.lower()
 
     def test_ml_classify_rejects_non_positive_tpot_repeats(self, tiny_csv):
-        result = CliRunner().invoke(ml, [
-            "classify", "--input", str(tiny_csv), "--outcome", "outcome",
-            "--tpot-repeats", "0",
-        ])
+        result = CliRunner().invoke(
+            ml,
+            [
+                "classify",
+                "--input",
+                str(tiny_csv),
+                "--outcome",
+                "outcome",
+                "--tpot-repeats",
+                "0",
+            ],
+        )
         assert result.exit_code != 0
 
     def test_ml_benchmark_rejects_non_positive_tpot_repeats(self, tiny_csv):
-        result = CliRunner().invoke(ml, [
-            "benchmark", "--input", str(tiny_csv), "--outcome", "outcome",
-            "--tpot-repeats", "0",
-        ])
+        result = CliRunner().invoke(
+            ml,
+            [
+                "benchmark",
+                "--input",
+                str(tiny_csv),
+                "--outcome",
+                "outcome",
+                "--tpot-repeats",
+                "0",
+            ],
+        )
         assert result.exit_code != 0
 
     def test_positive_tpot_repeats_still_accepted(self, tiny_csv):
         # Sanity: the IntRange lower bound must not reject valid values.
-        result = CliRunner().invoke(bench, [
-            "--input", str(tiny_csv), "--outcome", "outcome",
-            "--models", "LR", "--cv", "2", "--inner-cv", "2",
-            "--tpot-repeats", "1",
-            "--output-dir", str(tiny_csv.parent / "out"),
-        ])
+        result = CliRunner().invoke(
+            bench,
+            [
+                "--input",
+                str(tiny_csv),
+                "--outcome",
+                "outcome",
+                "--models",
+                "LR",
+                "--cv",
+                "2",
+                "--inner-cv",
+                "2",
+                "--tpot-repeats",
+                "1",
+                "--output-dir",
+                str(tiny_csv.parent / "out"),
+            ],
+        )
         assert result.exit_code == 0, result.output
 
 
 # ---------------------------------------------------------------------------
 # [1] Grid-branch warning suppression regression
 # ---------------------------------------------------------------------------
+
 
 class _WarningGridSearchCV:
     """Stand-in for sklearn.model_selection.GridSearchCV that always warns
@@ -110,6 +150,7 @@ class TestGridBranchWarningsNotSuppressed:
         monkeypatch.setattr(skms, "GridSearchCV", _WarningGridSearchCV)
 
         from qradiomics.classification.registry import build_model
+
         pipe, grid = build_model("LR", random_state=0)
         assert grid  # LR has a real param grid -> takes the `if grid:` branch
 
@@ -121,14 +162,23 @@ class TestGridBranchWarningsNotSuppressed:
 
         with pytest.warns(UserWarning, match="dummy grid-search convergence warning"):
             bench_mod._fit_and_score_external(
-                pipe, grid, X_tr, y_tr, X_ext, y_ext,
-                inner_cv=2, n_jobs=1, seed=0, calibrate_threshold=False,
+                pipe,
+                grid,
+                X_tr,
+                y_tr,
+                X_ext,
+                y_ext,
+                inner_cv=2,
+                n_jobs=1,
+                seed=0,
+                calibrate_threshold=False,
             )
 
     def test_no_grid_branch_still_suppresses_warnings(self, monkeypatch):
         """Regression guard: the AutoML/no-grid branch must keep suppressing
         warnings (unchanged pre-refactor behavior) -- only the grid branch
         was over-broadened and needed fixing."""
+
         class _WarningPipe:
             def fit(self, X, y):
                 warnings.warn("dummy automl warning", UserWarning)
@@ -147,8 +197,16 @@ class TestGridBranchWarningsNotSuppressed:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             bench_mod._fit_and_score_external(
-                _WarningPipe(), {}, X_tr, y_tr, X_ext, y_ext,
-                inner_cv=2, n_jobs=1, seed=0, calibrate_threshold=False,
+                _WarningPipe(),
+                {},
+                X_tr,
+                y_tr,
+                X_ext,
+                y_ext,
+                inner_cv=2,
+                n_jobs=1,
+                seed=0,
+                calibrate_threshold=False,
             )
         assert not any("dummy automl warning" in str(w.message) for w in caught)
 
@@ -156,6 +214,7 @@ class TestGridBranchWarningsNotSuppressed:
 # ---------------------------------------------------------------------------
 # [4] --calibrate-threshold minority-class clamp
 # ---------------------------------------------------------------------------
+
 
 class TestCalibrateThresholdMinorityClassGuard:
     def test_single_member_minority_class_skips_calibration_with_warning(self):
@@ -172,8 +231,16 @@ class TestCalibrateThresholdMinorityClassGuard:
 
         with pytest.warns(UserWarning, match="Skipping --calibrate-threshold"):
             metrics, best_params = bench_mod._fit_and_score_external(
-                pipe, grid, X_tr, y_tr, X_ext, y_ext,
-                inner_cv=5, n_jobs=1, seed=0, calibrate_threshold=True,
+                pipe,
+                grid,
+                X_tr,
+                y_tr,
+                X_ext,
+                y_ext,
+                inner_cv=5,
+                n_jobs=1,
+                seed=0,
+                calibrate_threshold=True,
             )
 
         # Calibration was skipped -> no threshold/accuracy/... keys, but the
@@ -199,8 +266,16 @@ class TestCalibrateThresholdMinorityClassGuard:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             metrics, _ = bench_mod._fit_and_score_external(
-                pipe, grid, X_tr, y_tr, X_ext, y_ext,
-                inner_cv=5, n_jobs=1, seed=0, calibrate_threshold=True,
+                pipe,
+                grid,
+                X_tr,
+                y_tr,
+                X_ext,
+                y_ext,
+                inner_cv=5,
+                n_jobs=1,
+                seed=0,
+                calibrate_threshold=True,
             )
         assert "threshold" in metrics
         assert not any("Skipping --calibrate-threshold" in str(w.message) for w in caught)
@@ -210,14 +285,24 @@ class TestCalibrateThresholdMinorityClassGuard:
 # [6] Parallel --tpot-repeats loop
 # ---------------------------------------------------------------------------
 
-def _fake_fit_and_score(pipe, grid, X_tr, y_tr, X_ext, y_ext, *,
-                        inner_cv, n_jobs, seed, calibrate_threshold):
+
+def _fake_fit_and_score(
+    pipe, grid, X_tr, y_tr, X_ext, y_ext, *, inner_cv, n_jobs, seed, calibrate_threshold
+):
     return {"auc": 0.70 + 0.01 * seed, "ap": 0.6, "brier": 0.3}, {"seed_used": seed}
 
 
 class TestParallelRepeatLoop:
     def test_n_repeats_produce_n_independent_rows_under_parallel_path(self, monkeypatch):
+        class _FakePipe:
+            def set_params(self, **kwargs):
+                return self
+
         monkeypatch.setattr(bench_mod, "_fit_and_score_external", _fake_fit_and_score)
+        monkeypatch.setattr(
+            "qradiomics.classification.registry.build_model",
+            lambda name, random_state=42: (_FakePipe(), {}),
+        )
         X_tr = np.zeros((10, 3))
         y_tr = np.array([0, 1] * 5)
         X_ext = np.zeros((6, 3))
@@ -229,8 +314,16 @@ class TestParallelRepeatLoop:
         # itself (which subprocess-based test sandboxes may not support).
         seed, tpot_repeats = 100, 4
         rows = bench_mod.build_external_test_rows(
-            ["TPOT"], {"TPOT": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=seed, inner_cv=5, n_jobs=1, tpot_repeats=tpot_repeats,
+            ["TPOT"],
+            {"TPOT": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=seed,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=tpot_repeats,
             calibrate_threshold=False,
         )
         row = rows[0]
@@ -256,9 +349,7 @@ class TestParallelRepeatLoop:
             return _FakePipe(), {}
 
         monkeypatch.setattr(bench_mod, "_fit_and_score_external", _fake_fit_and_score)
-        monkeypatch.setattr(
-            "qradiomics.classification.registry.build_model", _fake_build_model
-        )
+        monkeypatch.setattr("qradiomics.classification.registry.build_model", _fake_build_model)
 
         X_tr = np.zeros((10, 3))
         y_tr = np.array([0, 1] * 5)
@@ -266,8 +357,16 @@ class TestParallelRepeatLoop:
         y_ext = np.array([0, 1, 0, 1, 0, 1])
 
         bench_mod.build_external_test_rows(
-            ["TPOT"], {"TPOT": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=1, inner_cv=5, n_jobs=1, tpot_repeats=3,
+            ["TPOT"],
+            {"TPOT": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=1,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=3,
             calibrate_threshold=False,
         )
         assert seen_n_jobs == [1, 1, 1]
@@ -286,9 +385,7 @@ class TestParallelRepeatLoop:
             return _FakePipe(), {}
 
         monkeypatch.setattr(bench_mod, "_fit_and_score_external", _fake_fit_and_score)
-        monkeypatch.setattr(
-            "qradiomics.classification.registry.build_model", _fake_build_model
-        )
+        monkeypatch.setattr("qradiomics.classification.registry.build_model", _fake_build_model)
 
         X_tr = np.zeros((10, 3))
         y_tr = np.array([0, 1] * 5)
@@ -296,8 +393,16 @@ class TestParallelRepeatLoop:
         y_ext = np.array([0, 1, 0, 1, 0, 1])
 
         bench_mod.build_external_test_rows(
-            ["LR"], {"LR": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=1, inner_cv=5, n_jobs=1, tpot_repeats=5,
+            ["LR"],
+            {"LR": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=1,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=5,
             calibrate_threshold=False,
         )
         assert seen_calls == []

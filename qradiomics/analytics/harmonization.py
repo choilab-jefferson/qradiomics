@@ -39,8 +39,7 @@ import pandas as pd
 __all__ = ["combat_harmonize", "residualize_linear"]
 
 
-def _design_matrix(batch: np.ndarray,
-                   covariates: Optional[np.ndarray]) -> tuple[np.ndarray, int]:
+def _design_matrix(batch: np.ndarray, covariates: Optional[np.ndarray]) -> tuple[np.ndarray, int]:
     """Build [batch one-hot | covariates] design; return (X, n_batch)."""
     batches = np.unique(batch)
     n_batch = len(batches)
@@ -63,7 +62,7 @@ def _aprior(delta_hat: np.ndarray) -> float:
 def _bprior(delta_hat: np.ndarray) -> float:
     m = delta_hat.mean()
     s2 = delta_hat.var()
-    return (m * s2 + m ** 3) / s2
+    return (m * s2 + m**3) / s2
 
 
 def _postmean(g_hat, g_bar, n, d_star, t2):
@@ -74,8 +73,7 @@ def _postvar(sum2, n, a, b):
     return (0.5 * sum2 + b) / (n / 2.0 + a - 1.0)
 
 
-def _it_eb(s_data, gamma_hat, delta_hat, gamma_bar, t2, a_prior, b_prior,
-           conv=1e-4, max_iter=500):
+def _it_eb(s_data, gamma_hat, delta_hat, gamma_bar, t2, a_prior, b_prior, conv=1e-4, max_iter=500):
     """Iterative parametric empirical-Bayes shrinkage for one batch."""
     n = (~np.isnan(s_data)).sum(axis=1)
     g_old = gamma_hat.copy()
@@ -87,21 +85,25 @@ def _it_eb(s_data, gamma_hat, delta_hat, gamma_bar, t2, a_prior, b_prior,
         resid = s_data - g_new[:, None]
         sum2 = np.nansum(resid * resid, axis=1)
         d_new = _postvar(sum2, n, a_prior, b_prior)
-        change = max(np.max(np.abs(g_new - g_old) / (np.abs(g_old) + 1e-12)),
-                     np.max(np.abs(d_new - d_old) / (np.abs(d_old) + 1e-12)))
+        change = max(
+            np.max(np.abs(g_new - g_old) / (np.abs(g_old) + 1e-12)),
+            np.max(np.abs(d_new - d_old) / (np.abs(d_old) + 1e-12)),
+        )
         g_old, d_old = g_new, d_new
         it += 1
     return g_old, d_old
 
 
-def combat_harmonize(df: pd.DataFrame,
-                     feature_cols: Sequence[str],
-                     batch_col: str,
-                     *,
-                     categorical_covariates: Sequence[str] = (),
-                     continuous_covariates: Sequence[str] = (),
-                     parametric: bool = True,
-                     eb: bool = True) -> pd.DataFrame:
+def combat_harmonize(
+    df: pd.DataFrame,
+    feature_cols: Sequence[str],
+    batch_col: str,
+    *,
+    categorical_covariates: Sequence[str] = (),
+    continuous_covariates: Sequence[str] = (),
+    parametric: bool = True,
+    eb: bool = True,
+) -> pd.DataFrame:
     """ComBat-harmonize ``feature_cols`` across ``batch_col``.
 
     Args:
@@ -148,15 +150,15 @@ def combat_harmonize(df: pd.DataFrame,
     Z = work[list(feature_cols)].to_numpy(dtype=float).T  # (features, samples)
     n_feat, n_samp = Z.shape
 
-    X, _ = _design_matrix(batch, covariates)            # (samples, n_batch + n_cov)
+    X, _ = _design_matrix(batch, covariates)  # (samples, n_batch + n_cov)
     # least squares: B_hat (params x features)
     B_hat, *_ = np.linalg.lstsq(X, Z.T, rcond=None)
     # grand mean = batch-size-weighted average of the batch coefficients
     batch_sizes = np.array([(batch == b).sum() for b in batches], dtype=float)
-    grand_mean = (batch_sizes / n_samp) @ B_hat[:n_batch, :]      # (features,)
+    grand_mean = (batch_sizes / n_samp) @ B_hat[:n_batch, :]  # (features,)
     # pooled variance from residuals
     resid = Z - (X @ B_hat).T
-    var_pooled = (resid ** 2).mean(axis=1)               # (features,)
+    var_pooled = (resid**2).mean(axis=1)  # (features,)
     var_pooled[var_pooled == 0] = 1e-12
 
     # standardize
@@ -183,8 +185,9 @@ def combat_harmonize(df: pd.DataFrame,
             t2 = gamma_hat[i].var()
             a_prior = _aprior(delta_hat[i])
             b_prior = _bprior(delta_hat[i])
-            g_star, d_star = _it_eb(Z_std[:, idx], gamma_hat[i], delta_hat[i],
-                                    gamma_bar, t2, a_prior, b_prior)
+            g_star, d_star = _it_eb(
+                Z_std[:, idx], gamma_hat[i], delta_hat[i], gamma_bar, t2, a_prior, b_prior
+            )
             gamma_star[i] = g_star
             delta_star[i] = d_star
     else:
@@ -193,19 +196,20 @@ def combat_harmonize(df: pd.DataFrame,
     # adjust
     Z_adj = Z_std.copy()
     for i, idx in enumerate(batch_idx):
-        Z_adj[:, idx] = ((Z_std[:, idx] - gamma_star[i][:, None])
-                         / np.sqrt(delta_star[i])[:, None])
+        Z_adj[:, idx] = (Z_std[:, idx] - gamma_star[i][:, None]) / np.sqrt(delta_star[i])[:, None]
     Z_adj = Z_adj * np.sqrt(var_pooled)[:, None] + stand_mean
 
     work[list(feature_cols)] = Z_adj.T
     return work
 
 
-def residualize_linear(df: pd.DataFrame,
-                       feature_cols: Sequence[str],
-                       confounders: Sequence[str],
-                       *,
-                       preserve_scale: bool = True) -> pd.DataFrame:
+def residualize_linear(
+    df: pd.DataFrame,
+    feature_cols: Sequence[str],
+    confounders: Sequence[str],
+    *,
+    preserve_scale: bool = True,
+) -> pd.DataFrame:
     """Regress each feature on ``confounders`` and keep the residual.
 
     With ``preserve_scale=True`` the feature's global mean is re-added
@@ -219,7 +223,7 @@ def residualize_linear(df: pd.DataFrame,
         return work
     X = work[conf].apply(pd.to_numeric, errors="coerce")
     X = X.fillna(X.mean()).to_numpy(dtype=float)
-    X = np.hstack([np.ones((len(X), 1)), X])             # intercept
+    X = np.hstack([np.ones((len(X), 1)), X])  # intercept
     for feat in feature_cols:
         y = pd.to_numeric(work[feat], errors="coerce").to_numpy(dtype=float)
         mask = np.isfinite(y)

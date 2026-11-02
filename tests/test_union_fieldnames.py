@@ -16,7 +16,7 @@ def test_union_preserves_first_order_and_appends_new_keys():
     rows = [
         {"patient_id": "A", "f1": 1, "f2": 2},
         {"patient_id": "B", "f1": 3, "f2": 4, "f3": 5},  # extra key
-        {"patient_id": "C", "f1": 6},                     # missing keys
+        {"patient_id": "C", "f1": 6},  # missing keys
     ]
     assert union_fieldnames(rows) == ["patient_id", "f1", "f2", "f3"]
 

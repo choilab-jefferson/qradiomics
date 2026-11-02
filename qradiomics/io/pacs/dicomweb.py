@@ -58,10 +58,7 @@ def _parse_multipart_dicom(body: bytes, content_type: str) -> List[bytes]:
     msg = BytesParser().parsebytes(header + body)
     parts: List[bytes] = []
     for part in msg.walk():
-        if (
-            part.get_content_maintype() == "application"
-            and part.get_content_subtype() == "dicom"
-        ):
+        if part.get_content_maintype() == "application" and part.get_content_subtype() == "dicom":
             payload = part.get_payload(decode=True)
             if isinstance(payload, (bytes, bytearray)):
                 parts.append(bytes(payload))
@@ -182,9 +179,7 @@ class DICOMwebBackend(PACSBackend):
     def query_studies(self, **filters: Any) -> List[Dict[str, Any]]:
         return self._qido("studies", **filters)
 
-    def query_series(
-        self, study_uid: Optional[str] = None, **filters: Any
-    ) -> List[Dict[str, Any]]:
+    def query_series(self, study_uid: Optional[str] = None, **filters: Any) -> List[Dict[str, Any]]:
         if study_uid:
             return self._qido(f"studies/{study_uid}/series", **filters)
         return self._qido("series", **filters)
@@ -192,9 +187,7 @@ class DICOMwebBackend(PACSBackend):
     def query_instances(
         self, study_uid: str, series_uid: str, **filters: Any
     ) -> List[Dict[str, Any]]:
-        return self._qido(
-            f"studies/{study_uid}/series/{series_uid}/instances", **filters
-        )
+        return self._qido(f"studies/{study_uid}/series/{series_uid}/instances", **filters)
 
     # ------------------------------------------------------------------ fetch
 
@@ -215,17 +208,13 @@ class DICOMwebBackend(PACSBackend):
         sop_instance_uid: str,
         output_path: Path,
     ) -> Path:
-        r = self._wado(
-            f"studies/{study_uid}/series/{series_uid}/instances/{sop_instance_uid}"
-        )
+        r = self._wado(f"studies/{study_uid}/series/{series_uid}/instances/{sop_instance_uid}")
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(self._split_response(r)[0])
         return out
 
-    def fetch_series(
-        self, study_uid: str, series_uid: str, output_dir: Path
-    ) -> List[Path]:
+    def fetch_series(self, study_uid: str, series_uid: str, output_dir: Path) -> List[Path]:
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         r = self._wado(f"studies/{study_uid}/series/{series_uid}")
@@ -237,15 +226,11 @@ class DICOMwebBackend(PACSBackend):
             written.append(path)
         return written
 
-    def fetch_study(
-        self, study_uid: str, output_dir: Path
-    ) -> Dict[str, List[Path]]:
+    def fetch_study(self, study_uid: str, output_dir: Path) -> Dict[str, List[Path]]:
         r = self._wado(f"studies/{study_uid}")
         out: Dict[str, List[Path]] = {}
         for idx, blob in enumerate(self._split_response(r)):
-            series_uid, sop = self._extract_series_and_sop(
-                blob, fallback_idx=idx
-            )
+            series_uid, sop = self._extract_series_and_sop(blob, fallback_idx=idx)
             series_dir = Path(output_dir) / series_uid
             series_dir.mkdir(parents=True, exist_ok=True)
             path = series_dir / f"{sop}.dcm"
@@ -281,10 +266,10 @@ class DICOMwebBackend(PACSBackend):
         boundary = "qradiomicsSTOW"
         data = Path(dicom_path).read_bytes()
         body = (
-            f"--{boundary}\r\n"
-            "Content-Type: application/dicom\r\n"
-            "\r\n"
-        ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+            (f"--{boundary}\r\n" "Content-Type: application/dicom\r\n" "\r\n").encode()
+            + data
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
         path = self._path(self.stow_prefix, "studies")
         try:
             r = self._client.post(

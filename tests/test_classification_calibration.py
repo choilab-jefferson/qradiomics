@@ -40,10 +40,12 @@ class TestYoudenThreshold:
         rng = np.random.default_rng(0)
         n_neg, n_pos = 80, 20
         y = np.array([0] * n_neg + [1] * n_pos)
-        p = np.concatenate([
-            rng.normal(0.3, 0.1, n_neg),
-            rng.normal(0.6, 0.1, n_pos),
-        ])
+        p = np.concatenate(
+            [
+                rng.normal(0.3, 0.1, n_neg),
+                rng.normal(0.6, 0.1, n_pos),
+            ]
+        )
         p = np.clip(p, 0.0, 1.0)
         thr = youden_threshold(y, p)
         assert 0.0 <= thr <= 1.0

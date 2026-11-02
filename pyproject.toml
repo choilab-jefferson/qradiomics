@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qradiomics"
-version = "0.9.5"
+version = "0.9.6"
 description = "Radiomics research CLI — extract, merge, analyze in one Unix-style pipeline."
 readme = "README.md"
 license = {text = "MIT"}
@@ -35,6 +35,7 @@ dependencies = [
     "pydicom>=2.4",
     "SimpleITK>=2.2.0",
     "numpy>=1.24.0",
+    "matplotlib>=3.5.0",
     # statsmodels<=0.14.6 calls pandas' deprecate_kwarg() with its pre-3.0
     # positional signature (old_arg_name, new_arg_name); pandas 3.0 requires
     # a leading `klass` arg, so importing statsmodels.tsa (pulled in by

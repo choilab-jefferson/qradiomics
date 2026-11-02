@@ -27,7 +27,9 @@ def config():
 )
 def show(path):
     """Show current CLI configuration."""
-    cfg = load_cli_config(path or (str(DEFAULT_CONFIG_PATH) if DEFAULT_CONFIG_PATH.exists() else None))
+    cfg = load_cli_config(
+        path or (str(DEFAULT_CONFIG_PATH) if DEFAULT_CONFIG_PATH.exists() else None)
+    )
     click.echo("QRadiomics CLI configuration:")
     click.echo(f"  verbose:      {cfg.verbose}")
     click.echo(f"  log_level:    {cfg.log_level}")

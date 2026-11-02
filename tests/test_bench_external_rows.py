@@ -27,8 +27,9 @@ def dummy_data():
     return X_tr, y_tr, X_ext, y_ext
 
 
-def _fake_fit_and_score(pipe, grid, X_tr, y_tr, X_ext, y_ext, *,
-                        inner_cv, n_jobs, seed, calibrate_threshold):
+def _fake_fit_and_score(
+    pipe, grid, X_tr, y_tr, X_ext, y_ext, *, inner_cv, n_jobs, seed, calibrate_threshold
+):
     """Deterministic stand-in for _fit_and_score_external: metrics depend
     only on `seed` so the test can compute the exact expected mean/std."""
     metrics = {
@@ -37,23 +38,44 @@ def _fake_fit_and_score(pipe, grid, X_tr, y_tr, X_ext, y_ext, *,
         "brier": 0.30 - 0.01 * seed,
     }
     if calibrate_threshold:
-        metrics.update({
-            "threshold": 0.50 + 0.001 * seed,
-            "accuracy": 0.80 + 0.001 * seed,
-            "sensitivity": 0.75 + 0.001 * seed,
-            "specificity": 0.70 + 0.001 * seed,
-        })
+        metrics.update(
+            {
+                "threshold": 0.50 + 0.001 * seed,
+                "accuracy": 0.80 + 0.001 * seed,
+                "sensitivity": 0.75 + 0.001 * seed,
+                "specificity": 0.70 + 0.001 * seed,
+            }
+        )
     return metrics, {"seed_used": seed}
 
 
 class TestBuildExternalTestRowsAggregation:
+    @pytest.fixture(autouse=True)
+    def _mock_build_model(self, monkeypatch):
+        class _FakePipe:
+            def set_params(self, **kwargs):
+                return self
+
+        monkeypatch.setattr(
+            "qradiomics.classification.registry.build_model",
+            lambda name, random_state=42: (_FakePipe(), {}),
+        )
+
     def test_non_tpot_model_is_fit_once(self, monkeypatch, dummy_data):
         monkeypatch.setattr(bench_mod, "_fit_and_score_external", _fake_fit_and_score)
         X_tr, y_tr, X_ext, y_ext = dummy_data
 
         rows = bench_mod.build_external_test_rows(
-            ["LR"], {"LR": 0.9}, X_tr, y_tr, X_ext, y_ext,
-            seed=10, inner_cv=5, n_jobs=1, tpot_repeats=5,
+            ["LR"],
+            {"LR": 0.9},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=10,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=5,
             calibrate_threshold=False,
         )
         assert len(rows) == 1
@@ -72,8 +94,16 @@ class TestBuildExternalTestRowsAggregation:
         tpot_repeats = 3
 
         rows = bench_mod.build_external_test_rows(
-            ["TPOT"], {"TPOT": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=seed, inner_cv=5, n_jobs=1, tpot_repeats=tpot_repeats,
+            ["TPOT"],
+            {"TPOT": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=seed,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=tpot_repeats,
             calibrate_threshold=False,
         )
         assert len(rows) == 1
@@ -95,8 +125,16 @@ class TestBuildExternalTestRowsAggregation:
         X_tr, y_tr, X_ext, y_ext = dummy_data
 
         rows = bench_mod.build_external_test_rows(
-            ["TPOT"], {"TPOT": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=1, inner_cv=5, n_jobs=1, tpot_repeats=4,
+            ["TPOT"],
+            {"TPOT": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=1,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=4,
             calibrate_threshold=False,
         )
         row = rows[0]
@@ -111,8 +149,16 @@ class TestBuildExternalTestRowsAggregation:
         seed, tpot_repeats = 5, 2
 
         rows = bench_mod.build_external_test_rows(
-            ["TPOT"], {"TPOT": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=seed, inner_cv=5, n_jobs=1, tpot_repeats=tpot_repeats,
+            ["TPOT"],
+            {"TPOT": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=seed,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=tpot_repeats,
             calibrate_threshold=True,
         )
         row = rows[0]
@@ -128,8 +174,15 @@ class TestBuildExternalTestRowsAggregation:
         X_tr, y_tr, X_ext, y_ext = dummy_data
 
         rows = bench_mod.build_external_test_rows(
-            ["LR"], {"LR": 0.5}, X_tr, y_tr, X_ext, y_ext,
-            seed=1, inner_cv=5, n_jobs=1,
+            ["LR"],
+            {"LR": 0.5},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=1,
+            inner_cv=5,
+            n_jobs=1,
         )
         assert "threshold" not in rows[0]
 
@@ -141,8 +194,16 @@ class TestBuildExternalTestRowsAggregation:
         X_tr, y_tr, X_ext, y_ext = dummy_data
 
         rows = bench_mod.build_external_test_rows(
-            ["LR", "TPOT"], {"LR": 0.7, "TPOT": 0.75}, X_tr, y_tr, X_ext, y_ext,
-            seed=2, inner_cv=5, n_jobs=1, tpot_repeats=3,
+            ["LR", "TPOT"],
+            {"LR": 0.7, "TPOT": 0.75},
+            X_tr,
+            y_tr,
+            X_ext,
+            y_ext,
+            seed=2,
+            inner_cv=5,
+            n_jobs=1,
+            tpot_repeats=3,
             calibrate_threshold=True,
         )
         assert len(rows) == 2

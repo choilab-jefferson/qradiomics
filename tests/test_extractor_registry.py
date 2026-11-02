@@ -62,9 +62,17 @@ def test_run_multi_extraction_single_engine_passthrough(tmp_path):
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+        ],
+    )
 
     fixed_result = {
         "features_uri": f"file://{job_dir.resolve()}/features.csv",
@@ -78,7 +86,12 @@ def test_run_multi_extraction_single_engine_passthrough(tmp_path):
 
     with patch.object(RadiomicsExtractor, "run_extraction", return_value=fixed_result) as mock_run:
         result = run_multi_extraction(
-            ["pyradiomics"], uuid4(), manifest, job_dir, {}, jobs=1,
+            ["pyradiomics"],
+            uuid4(),
+            manifest,
+            job_dir,
+            {},
+            jobs=1,
         )
 
     mock_run.assert_called_once()
@@ -90,10 +103,23 @@ def test_run_multi_extraction_multi_engine_merge(tmp_path):
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
 
     class FakeExtractorA:
         def run_extraction(self, job_id, manifest_path, job_dir, extraction_settings, jobs=1):
@@ -103,8 +129,11 @@ def test_run_multi_extraction_multi_engine_merge(tmp_path):
                 writer.writerow({"patient_id": "P001", "feat1": 1.0})
                 writer.writerow({"patient_id": "P002", "feat1": 2.0})
             return {
-                "feature_count": 1, "patients_processed": 2,
-                "patients_failed": 0, "patients_skipped": 0, "status": "extracted",
+                "feature_count": 1,
+                "patients_processed": 2,
+                "patients_failed": 0,
+                "patients_skipped": 0,
+                "status": "extracted",
             }
 
     class FakeExtractorB:
@@ -116,15 +145,23 @@ def test_run_multi_extraction_multi_engine_merge(tmp_path):
                 writer.writerow({"patient_id": "P002", "feat2": 3.0})
                 writer.writerow({"patient_id": "P003", "feat2": 4.0})
             return {
-                "feature_count": 1, "patients_processed": 2,
-                "patients_failed": 0, "patients_skipped": 0, "status": "extracted",
+                "feature_count": 1,
+                "patients_processed": 2,
+                "patients_failed": 0,
+                "patients_skipped": 0,
+                "status": "extracted",
             }
 
     fake_registry = {"engA": FakeExtractorA, "engB": FakeExtractorB}
 
     with patch.object(extractor_registry, "EXTRACTOR_REGISTRY", fake_registry):
         result = run_multi_extraction(
-            ["engA", "engB"], uuid4(), manifest, job_dir, {}, jobs=1,
+            ["engA", "engB"],
+            uuid4(),
+            manifest,
+            job_dir,
+            {},
+            jobs=1,
         )
 
     assert result["status"] == "extracted"
@@ -155,9 +192,17 @@ def test_run_multi_extraction_unknown_engine_raises_keyerror(tmp_path):
     job_dir = tmp_path / "job"
     job_dir.mkdir()
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+        ],
+    )
 
     with pytest.raises(KeyError):
         run_multi_extraction(["bogus"], uuid4(), manifest, job_dir, {}, jobs=1)

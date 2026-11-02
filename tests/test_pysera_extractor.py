@@ -35,10 +35,23 @@ def _read_csv(path):
 
 def test_happy_path(tmp_path):
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -68,10 +81,18 @@ def test_happy_path(tmp_path):
 
 def test_skip_empty_mask(tmp_path):
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": ""},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": ""},
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -90,10 +111,23 @@ def test_skip_empty_mask(tmp_path):
 
 def test_partial_failure_success_flag(tmp_path):
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "bad.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "good.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "bad.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "good.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -120,10 +154,23 @@ def test_partial_failure_success_flag(tmp_path):
 
 def test_process_batch_exception_isolated(tmp_path):
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "boom.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "good.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "boom.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "good.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -147,15 +194,23 @@ def test_process_batch_exception_isolated(tmp_path):
 
 def test_pysera_import_error_returns_error_status(tmp_path, monkeypatch):
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
-    # pysera is not installed in this environment; make sure no leftover
-    # mock module from another test lingers in sys.modules either.
-    monkeypatch.delitem(sys.modules, "pysera", raising=False)
+    # Force import pysera to raise ImportError even when pysera is installed
+    # in site-packages.
+    monkeypatch.setitem(sys.modules, "pysera", None)
 
     extractor = PyseraExtractor()
     result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=1)

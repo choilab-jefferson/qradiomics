@@ -36,8 +36,7 @@ def golden():
 )
 class TestJLRParityGolden:
     def test_byte_identical_features(self, golden):
-        img, msk = load_image_and_mask(golden["image_path"],
-                                        golden["mask_path"])
+        img, msk = load_image_and_mask(golden["image_path"], golden["mask_path"])
         feats = extract_features(img, msk)
         expected = golden["features"]
 
@@ -59,10 +58,7 @@ class TestJLRParityGolden:
                 continue
             if abs(got_f - want) > max(TOL_ABS, TOL_REL * abs(want)):
                 diffs.append((k, got_f, want, abs(got_f - want)))
-        assert not diffs, (
-            f"{len(diffs)} feature(s) drift from golden (showing 5): "
-            f"{diffs[:5]}"
-        )
+        assert not diffs, f"{len(diffs)} feature(s) drift from golden (showing 5): " f"{diffs[:5]}"
 
     def test_feature_count_matches_jlr_sweep(self, golden):
         """JLR's 24-case AB-parity sweep reported 1409 features per case

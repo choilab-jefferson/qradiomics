@@ -51,8 +51,10 @@ class TestCompareImagePair:
 
     def test_pair_dict_image_and_mask(self):
         a_img, b_img = _make_image(value=5.0), _make_image(value=5.0)
-        a_msk = sitk.Image(a_img.GetSize(), sitk.sitkUInt8); a_msk[:] = 1
-        b_msk = sitk.Image(a_img.GetSize(), sitk.sitkUInt8); b_msk[:] = 1
+        a_msk = sitk.Image(a_img.GetSize(), sitk.sitkUInt8)
+        a_msk[:] = 1
+        b_msk = sitk.Image(a_img.GetSize(), sitk.sitkUInt8)
+        b_msk[:] = 1
         diffs = compare_image_pair_dict((a_img, a_msk), (b_img, b_msk))
         assert diffs["image"].is_identical
         assert diffs["mask"].is_identical
@@ -88,10 +90,8 @@ class TestPreprocessStress:
             if not (img_p.exists() and msk_p.exists()):
                 continue
             try:
-                img, msk = load_image_and_mask(
-                    img_p, msk_p, require_compatible_geometry=False)
-                ic, mc = preprocess_pair(img, msk, pad_mm=20.0,
-                                          resample_mm=(1.0, 1.0, 1.0))
+                img, msk = load_image_and_mask(img_p, msk_p, require_compatible_geometry=False)
+                ic, mc = preprocess_pair(img, msk, pad_mm=20.0, resample_mm=(1.0, 1.0, 1.0))
                 assert ic.GetSize() == mc.GetSize()
                 assert ic.GetSpacing() == mc.GetSpacing()
                 ok += 1
@@ -103,9 +103,7 @@ class TestPreprocessStress:
             except Exception as e:
                 unexpected_fail.append((pid, str(e)[:80]))
 
-        assert not unexpected_fail, (
-            f"preprocess_pair errored unexpectedly for: {unexpected_fail}"
-        )
+        assert not unexpected_fail, f"preprocess_pair errored unexpectedly for: {unexpected_fail}"
         # The known drifted cases on this cohort total 5.
         assert ok + size_mismatch >= 35
 

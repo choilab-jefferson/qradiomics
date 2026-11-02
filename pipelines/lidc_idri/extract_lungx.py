@@ -29,8 +29,8 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from pipelines.common.engine_extract import extract_features_multi
 from pipelines.common.parallel import run_parallel_rows
-from qradiomics.atomic import extract_features
 from qradiomics.io.dicom import load_dicom_series
 from qradiomics.shape import spiculation_from_voxel
 
@@ -137,7 +137,7 @@ def _region_grow_seed(ct_arr: np.ndarray, z: int, y: int, x: int,
 
 
 def _process_one(args) -> list[dict]:
-    scan, nodule_num, z, y, x, diagnosis, y_malig, dicom_dir, do_spic = args
+    scan, nodule_num, z, y, x, diagnosis, y_malig, dicom_dir, do_spic, engine = args
     rows = []
     try:
         ct = load_dicom_series(str(dicom_dir))
@@ -170,7 +170,7 @@ def _process_one(args) -> list[dict]:
         }
 
         try:
-            feats = extract_features(ct, msk_img, label=1, geometry_tolerance=1e-3)
+            feats = extract_features_multi(ct, msk_img, engine=engine, label=1, geometry_tolerance=1e-3)
             for k, v in feats.items():
                 row[k] = v
             row["status_radiomics"] = "ok"
@@ -211,6 +211,10 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--skip-spiculation", action="store_true",
                    help="Skip spiculation features (radiomics only — much faster)")
+    p.add_argument("--engine", default=None,
+                   help="Extraction engine(s): pyradiomics (default), pysera, "
+                        "rtools, a comma-list, or 'all'. Omit for unchanged "
+                        "PyRadiomics-only behaviour.")
     args = p.parse_args()
 
     truth = _load_truth(Path(args.truth_cal), Path(args.truth_test))
@@ -231,7 +235,7 @@ def main() -> int:
         work.append((r["scan"], int(r["nodule_num"]),
                      int(r["image_no"]), int(y), int(x),
                      r["diagnosis"], int(r["y_malignant"]),
-                     str(dicom_dir), not args.skip_spiculation))
+                     str(dicom_dir), not args.skip_spiculation, args.engine))
     print(f"  → {len(work)} tasks queued", file=sys.stderr)
 
     run_parallel_rows(

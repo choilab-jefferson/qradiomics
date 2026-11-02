@@ -35,13 +35,15 @@ def _shape_one(args):
         idx = np.argwhere(mask > 0)
         if idx.size == 0:
             return (pid, None, "empty_mask")
-        z0, y0, x0 = idx.min(axis=0); z1, y1, x1 = idx.max(axis=0) + 1
+        z0, y0, x0 = idx.min(axis=0)
+        z1, y1, x1 = idx.max(axis=0) + 1
         z0, y0, x0 = max(0, z0 - 4), max(0, y0 - 4), max(0, x0 - 4)
-        ct_c = ct[z0:z1+4, y0:y1+4, x0:x1+4]
-        mask_c = mask[z0:z1+4, y0:y1+4, x0:x1+4]
+        ct_c = ct[z0 : z1 + 4, y0 : y1 + 4, x0 : x1 + 4]
+        mask_c = mask[z0 : z1 + 4, y0 : y1 + 4, x0 : x1 + 4]
 
         if do_ahsn:
             from qradiomics.shape import ahsn, AHSNConfig
+
             desc = ahsn(ct_c, mask=mask_c > 0, cfg=AHSNConfig())
             for i, v in enumerate(desc):
                 result[f"ahsn_{i:03d}"] = float(v)
@@ -49,8 +51,11 @@ def _shape_one(args):
         if do_spic:
             try:
                 from qradiomics.shape import spiculation_from_voxel
+
                 feats, _, _, _ = spiculation_from_voxel(mask_c.astype("float32"), n_param_iter=80)
-                for k, v in feats.as_dict().items() if hasattr(feats, "as_dict") else feats.__dict__.items():
+                for k, v in (
+                    feats.as_dict().items() if hasattr(feats, "as_dict") else feats.__dict__.items()
+                ):
                     if isinstance(v, (int, float)):
                         result[f"spic_{k}"] = float(v)
             except Exception as e:
@@ -67,13 +72,18 @@ def shape():
 
 
 @shape.command("extract")
-@click.option("--manifest", "-m", required=True, type=click.Path(exists=True, dir_okay=False),
-              help="Manifest CSV (patient_id, modality, image_path, mask_path)")
-@click.option("--output", "-o", required=True, type=click.Path(),
-              help="Output shape_features.csv")
+@click.option(
+    "--manifest",
+    "-m",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Manifest CSV (patient_id, modality, image_path, mask_path)",
+)
+@click.option("--output", "-o", required=True, type=click.Path(), help="Output shape_features.csv")
 @click.option("--ahsn/--no-ahsn", default=True, help="Compute AHSN (2014 CMPB) descriptor")
-@click.option("--spiculation/--no-spiculation", default=True,
-              help="Compute spiculation features (2021 CMPB)")
+@click.option(
+    "--spiculation/--no-spiculation", default=True, help="Compute spiculation features (2021 CMPB)"
+)
 @click.option("--jobs", "-j", default=1, type=int)
 def extract(manifest, output, ahsn, spiculation, jobs):
     """Extract shape descriptors for every patient in a manifest."""
@@ -83,15 +93,19 @@ def extract(manifest, output, ahsn, spiculation, jobs):
 
     work = [(r["patient_id"], r["image_path"], r["mask_path"], ahsn, spiculation) for r in rows]
 
-    out_path = Path(output); out_path.parent.mkdir(parents=True, exist_ok=True)
-    n_ok = 0; n_fail = 0
+    out_path = Path(output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n_ok = 0
+    n_fail = 0
     results: list[dict] = []
 
     def _collect(pid, row, err):
         nonlocal n_ok, n_fail
         if row is None:
-            n_fail += 1; return
-        results.append(row); n_ok += 1
+            n_fail += 1
+            return
+        results.append(row)
+        n_ok += 1
 
     if jobs <= 1:
         for i, w in enumerate(work, 1):
@@ -99,8 +113,9 @@ def extract(manifest, output, ahsn, spiculation, jobs):
             print(f"  shape [{i}/{total}] {pid} ...", flush=True)
             pid, row, err = _shape_one(w)
             _collect(pid, row, err)
-            print(f"  shape [{i}/{total}] {pid} {'ok' if row else 'FAIL: ' + (err or '')}",
-                  flush=True)
+            print(
+                f"  shape [{i}/{total}] {pid} {'ok' if row else 'FAIL: ' + (err or '')}", flush=True
+            )
     else:
         done = 0
         with ProcessPoolExecutor(max_workers=jobs) as ex:
@@ -109,8 +124,10 @@ def extract(manifest, output, ahsn, spiculation, jobs):
                 done += 1
                 pid, row, err = fut.result()
                 _collect(pid, row, err)
-                print(f"  shape [{done}/{total}] {pid} "
-                      f"{'ok' if row else 'FAIL: ' + (err or '')}", flush=True)
+                print(
+                    f"  shape [{done}/{total}] {pid} " f"{'ok' if row else 'FAIL: ' + (err or '')}",
+                    flush=True,
+                )
                 sys.stdout.flush()
 
     # Write with a UNION header across all rows. A per-patient spiculation
@@ -120,6 +137,7 @@ def extract(manifest, output, ahsn, spiculation, jobs):
     # robust to heterogeneous key sets.
     if results:
         from qradiomics.extractor import union_fieldnames
+
         fieldnames = union_fieldnames(results)
         with open(out_path, "w", newline="") as fout:
             writer = csv.DictWriter(fout, fieldnames=fieldnames, restval="")

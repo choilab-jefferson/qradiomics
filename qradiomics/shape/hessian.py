@@ -19,12 +19,12 @@ from scipy.ndimage import gaussian_filter
 class SurfaceElements:
     """Per-voxel surface descriptor from Hessian eigendecomposition."""
 
-    surfaceness: np.ndarray   # (Z,Y,X) ≥ 0
-    curvedness: np.ndarray    # (Z,Y,X) ≥ 0
-    pointedness: np.ndarray   # (Z,Y,X) ≥ 0
-    normal: np.ndarray        # (Z,Y,X,3) — e1 (largest |λ|)
-    tangent: np.ndarray       # (Z,Y,X,3) — e3 (smallest |λ|)
-    eigvals: np.ndarray       # (Z,Y,X,3) sorted by descending |λ|
+    surfaceness: np.ndarray  # (Z,Y,X) ≥ 0
+    curvedness: np.ndarray  # (Z,Y,X) ≥ 0
+    pointedness: np.ndarray  # (Z,Y,X) ≥ 0
+    normal: np.ndarray  # (Z,Y,X,3) — e1 (largest |λ|)
+    tangent: np.ndarray  # (Z,Y,X,3) — e3 (smallest |λ|)
+    eigvals: np.ndarray  # (Z,Y,X,3) sorted by descending |λ|
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -50,8 +50,7 @@ def hessian_3d(volume: np.ndarray, sigma: float) -> np.ndarray:
             order = [0, 0, 0]
             order[ai] += 1
             order[aj] += 1
-            H[..., i, j] = gaussian_filter(v, sigma=s, order=tuple(order),
-                                           mode="nearest")
+            H[..., i, j] = gaussian_filter(v, sigma=s, order=tuple(order), mode="nearest")
     H *= s * s  # scale normalization
     return H
 
@@ -96,6 +95,10 @@ def surface_elements(volume: np.ndarray, sigma: float) -> SurfaceElements:
     n = evecs[..., :, 0]  # normal = column 0
     t = evecs[..., :, 2]  # tangent = column 2
     return SurfaceElements(
-        surfaceness=surf, curvedness=curv, pointedness=pt,
-        normal=n, tangent=t, eigvals=evals,
+        surfaceness=surf,
+        curvedness=curv,
+        pointedness=pt,
+        normal=n,
+        tangent=t,
+        eigvals=evals,
     )

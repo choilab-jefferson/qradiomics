@@ -232,8 +232,17 @@ feature_extraction:
   settings:
     type: object
     properties:
-      normalize: { type: boolean, default: true }
-      normalizeScale: { type: number, default: 100 }
+      # normalize defaults to FALSE. CT (HU) and PET (SUV) are calibrated physical
+      # units and the bin width is chosen against them directly. The old `true` default
+      # meant any pattern that omitted the key silently inherited normalize: true, which
+      # combined with binWidth 25 z-scores intensities to std ~1 and collapses the ROI
+      # into ~1 bin -- all texture features degenerate (Entropy ~= 0). See the JeffLuRa
+      # canonical fix 02e4e3af (2026-03-18).
+      normalize: { type: boolean, default: false }
+      # No default: normalizeScale applies ONLY when normalize is true (e.g. MR, which
+      # has no absolute intensity unit). Leaving it defaulted is what paired it with
+      # binWidth behind the pattern author's back.
+      normalizeScale: { type: number }
       binWidth: { type: number, default: 25 }
       geometryTolerance: { type: number, default: 0.0001 }
 

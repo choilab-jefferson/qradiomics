@@ -86,9 +86,7 @@ class PACSBackend(ABC):
         """Return studies matching simplified DICOM keyword filters."""
 
     @abstractmethod
-    def query_series(
-        self, study_uid: Optional[str] = None, **filters: Any
-    ) -> List[Dict[str, Any]]:
+    def query_series(self, study_uid: Optional[str] = None, **filters: Any) -> List[Dict[str, Any]]:
         """Return series; constrain to one study with ``study_uid``."""
 
     @abstractmethod
@@ -110,14 +108,10 @@ class PACSBackend(ABC):
         """Download a single SOP instance to ``output_path``."""
 
     @abstractmethod
-    def fetch_series(
-        self, study_uid: str, series_uid: str, output_dir: Path
-    ) -> List[Path]:
+    def fetch_series(self, study_uid: str, series_uid: str, output_dir: Path) -> List[Path]:
         """Download every instance of a series into ``output_dir``."""
 
-    def fetch_study(
-        self, study_uid: str, output_dir: Path
-    ) -> Dict[str, List[Path]]:
+    def fetch_study(self, study_uid: str, output_dir: Path) -> Dict[str, List[Path]]:
         """Download a whole study, grouped by ``SeriesInstanceUID``.
 
         Default implementation calls :meth:`query_series` then
@@ -138,9 +132,7 @@ class PACSBackend(ABC):
     def store_dicom(self, dicom_path: Path) -> Dict[str, Any]:
         """Upload a single DICOM file (STOW / Orthanc /instances / C-STORE)."""
 
-    def store_directory(
-        self, directory: Path, recursive: bool = True
-    ) -> List[Dict[str, Any]]:
+    def store_directory(self, directory: Path, recursive: bool = True) -> List[Dict[str, Any]]:
         """Upload every ``*.dcm`` under ``directory``."""
         pattern = "**/*.dcm" if recursive else "*.dcm"
         return [self.store_dicom(p) for p in sorted(Path(directory).glob(pattern))]

@@ -19,8 +19,7 @@ def synthetic_batched():
     rng = np.random.default_rng(0)
     n_per, n_feat = 80, 15
     covar = rng.normal(0, 1, 2 * n_per)
-    true = (covar[:, None] * rng.normal(0, 1, (1, n_feat))
-            + rng.normal(0, 1, (2 * n_per, n_feat)))
+    true = covar[:, None] * rng.normal(0, 1, (1, n_feat)) + rng.normal(0, 1, (2 * n_per, n_feat))
     batch = np.array(["A"] * n_per + ["B"] * n_per)
     loc = np.where(batch == "B", 3.0, 0.0)[:, None]
     scale = np.where(batch == "B", 2.0, 1.0)[:, None]
@@ -36,11 +35,11 @@ def synthetic_batched():
 class TestComBat:
     def test_removes_location_effect(self, synthetic_batched):
         df, fcols = synthetic_batched
-        before = abs(df[df.site == "A"][fcols].mean()
-                     - df[df.site == "B"][fcols].mean()).mean()
+        before = abs(df[df.site == "A"][fcols].mean() - df[df.site == "B"][fcols].mean()).mean()
         harm = combat_harmonize(df, fcols, "site", continuous_covariates=["covar"])
-        after = abs(harm[harm.site == "A"][fcols].mean()
-                    - harm[harm.site == "B"][fcols].mean()).mean()
+        after = abs(
+            harm[harm.site == "A"][fcols].mean() - harm[harm.site == "B"][fcols].mean()
+        ).mean()
         assert after < before * 0.25
 
     def test_preserves_biological_signal(self, synthetic_batched):

@@ -54,8 +54,10 @@ def _make_diagnostic_cohort() -> Cohort:
 
 def _make_longitudinal_cohort() -> Cohort:
     studies = []
-    for tp, day, st in [("baseline", 0, StudyType.PLANNING_CT),
-                        ("week4", 28, StudyType.ON_TREATMENT_CBCT)]:
+    for tp, day, st in [
+        ("baseline", 0, StudyType.PLANNING_CT),
+        ("week4", 28, StudyType.ON_TREATMENT_CBCT),
+    ]:
         img = ImageSeries(
             id=f"img_{tp}",
             modality=Modality.CT if "baseline" == tp else Modality.CBCT,
@@ -63,15 +65,23 @@ def _make_longitudinal_cohort() -> Cohort:
             image_tag=tp,
         )
         rt = RTStructureSet(
-            id=f"rt_{tp}", file_path=f"/x/{tp}-mask.nrrd",
+            id=f"rt_{tp}",
+            file_path=f"/x/{tp}-mask.nrrd",
             references_image_series_id=f"img_{tp}",
             rois=[ROI(name="GTV", label=1, roi_type="GTV")],
         )
-        studies.append(Study(id=f"s_{tp}", study_type=st,
-                              relative_day=day,
-                              image_series=[img], rt_structures=[rt]))
-    course = TreatmentCourse(id="rt1", studies=studies,
-                              prescription_dose_cgy=6000.0, num_fractions=30)
+        studies.append(
+            Study(
+                id=f"s_{tp}",
+                study_type=st,
+                relative_day=day,
+                image_series=[img],
+                rt_structures=[rt],
+            )
+        )
+    course = TreatmentCourse(
+        id="rt1", studies=studies, prescription_dose_cgy=6000.0, num_fractions=30
+    )
     p = Patient(id="P1", treatment_courses=[course])
     return Cohort(id="long", name="longitudinal", patients=[p])
 
@@ -155,8 +165,7 @@ class TestCohortPersistence:
         save_cohort(c, tmp_path / "c.yaml")
         c2 = load_cohort(tmp_path / "c.yaml")
         modalities = {
-            s.image_series[0].modality
-            for s in c2.patients[0].treatment_courses[0].studies
+            s.image_series[0].modality for s in c2.patients[0].treatment_courses[0].studies
         }
         assert Modality.CBCT in modalities
         assert Modality.CT in modalities
@@ -165,7 +174,6 @@ class TestCohortPersistence:
         c = _make_longitudinal_cohort()
         save_cohort(c, tmp_path / "c.yaml")
         c2 = load_cohort(tmp_path / "c.yaml")
-        study_types = {s.study_type
-                       for s in c2.patients[0].treatment_courses[0].studies}
+        study_types = {s.study_type for s in c2.patients[0].treatment_courses[0].studies}
         assert StudyType.PLANNING_CT in study_types
         assert StudyType.ON_TREATMENT_CBCT in study_types

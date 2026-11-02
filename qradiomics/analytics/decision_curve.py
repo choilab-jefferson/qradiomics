@@ -34,8 +34,7 @@ def net_benefit(y_true, prob, threshold: float) -> tuple[float, float]:
     return float(nb_model), float(nb_all)
 
 
-def decision_curve_summary(y_true, prob,
-                           thresholds=(0.1, 0.2, 0.3, 0.4, 0.5)) -> dict:
+def decision_curve_summary(y_true, prob, thresholds=(0.1, 0.2, 0.3, 0.4, 0.5)) -> dict:
     """Net benefit at several thresholds plus whether the model beats the
     best default strategy (treat-all / treat-none, the latter NB = 0)."""
     out: dict[str, dict] = {}

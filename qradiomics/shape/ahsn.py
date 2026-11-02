@@ -23,9 +23,9 @@ from .hessian import surface_elements, SurfaceElements
 
 @dataclass(frozen=True)
 class AHSNConfig:
-    n_bins_theta: int = 90       # elevation bins (each 180/n°)
-    n_bins_phi: int = 90         # azimuth bins (each 360/n°)
-    sigma: float = 1.0           # Gaussian smoothing for Hessian
+    n_bins_theta: int = 90  # elevation bins (each 180/n°)
+    n_bins_phi: int = 90  # azimuth bins (each 360/n°)
+    sigma: float = 1.0  # Gaussian smoothing for Hessian
     surfaceness_pct: float = 50  # weight-floor percentile (filters noise)
 
     @property
@@ -42,15 +42,16 @@ def normal_spherical(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     nx = normal[..., 0]
     ny = normal[..., 1]
     nz = normal[..., 2]
-    norm = np.sqrt(nx ** 2 + ny ** 2 + nz ** 2) + 1e-12
+    norm = np.sqrt(nx**2 + ny**2 + nz**2) + 1e-12
     nx, ny, nz = nx / norm, ny / norm, nz / norm
-    theta = np.degrees(np.arccos(np.clip(nz, -1.0, 1.0)))   # [0, 180]
-    phi = (np.degrees(np.arctan2(ny, nx)) + 360.0) % 360.0   # [0, 360)
+    theta = np.degrees(np.arccos(np.clip(nz, -1.0, 1.0)))  # [0, 180]
+    phi = (np.degrees(np.arctan2(ny, nx)) + 360.0) % 360.0  # [0, 360)
     return theta, phi
 
 
-def ahsn(block: np.ndarray, mask: np.ndarray | None = None,
-         cfg: AHSNConfig | None = None) -> np.ndarray:
+def ahsn(
+    block: np.ndarray, mask: np.ndarray | None = None, cfg: AHSNConfig | None = None
+) -> np.ndarray:
     """Compute AHSN descriptor on a 3D image block.
 
     Args:
@@ -65,8 +66,9 @@ def ahsn(block: np.ndarray, mask: np.ndarray | None = None,
     return _ahsn_from_elements(se, mask, cfg)
 
 
-def _ahsn_from_elements(se: SurfaceElements, mask: np.ndarray | None,
-                        cfg: AHSNConfig) -> np.ndarray:
+def _ahsn_from_elements(
+    se: SurfaceElements, mask: np.ndarray | None, cfg: AHSNConfig
+) -> np.ndarray:
     surf = se.surfaceness
     if cfg.surfaceness_pct > 0:
         thr = np.percentile(surf, cfg.surfaceness_pct)
@@ -81,31 +83,37 @@ def _ahsn_from_elements(se: SurfaceElements, mask: np.ndarray | None,
     if weights.sum() <= 0:
         return np.zeros(cfg.dim, dtype=np.float32)
     h_theta, _ = np.histogram(
-        th, bins=cfg.n_bins_theta, range=(0.0, 180.0), weights=weights,
+        th,
+        bins=cfg.n_bins_theta,
+        range=(0.0, 180.0),
+        weights=weights,
     )
     h_phi, _ = np.histogram(
-        ph, bins=cfg.n_bins_phi, range=(0.0, 360.0), weights=weights,
+        ph,
+        bins=cfg.n_bins_phi,
+        range=(0.0, 360.0),
+        weights=weights,
     )
     total = weights.sum()
     desc = np.concatenate([h_theta / total, h_phi / total])
     return desc.astype(np.float32)
 
 
-def find_tall_peak(desc: np.ndarray, cfg: AHSNConfig,
-                   z_score: float = 3.0) -> tuple[float, float] | None:
+def find_tall_peak(
+    desc: np.ndarray, cfg: AHSNConfig, z_score: float = 3.0
+) -> tuple[float, float] | None:
     """Find dominant (θ, φ) peak in the descriptor — used by wall elim.
 
     Returns (theta_deg, phi_deg) of the joint argmax across both halves,
     or None if no peak exceeds z_score · σ above mean.
     """
     h_theta = desc[: cfg.n_bins_theta]
-    h_phi = desc[cfg.n_bins_theta:]
+    h_phi = desc[cfg.n_bins_theta :]
     th_idx = int(np.argmax(h_theta))
     ph_idx = int(np.argmax(h_phi))
     th_mu, th_sd = h_theta.mean(), h_theta.std() + 1e-12
     ph_mu, ph_sd = h_phi.mean(), h_phi.std() + 1e-12
-    if (h_theta[th_idx] - th_mu) / th_sd < z_score and \
-       (h_phi[ph_idx] - ph_mu) / ph_sd < z_score:
+    if (h_theta[th_idx] - th_mu) / th_sd < z_score and (h_phi[ph_idx] - ph_mu) / ph_sd < z_score:
         return None
     th = (th_idx + 0.5) * (180.0 / cfg.n_bins_theta)
     ph = (ph_idx + 0.5) * (360.0 / cfg.n_bins_phi)

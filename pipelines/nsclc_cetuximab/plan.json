@@ -14,7 +14,8 @@
     "task": "survival",
     "outcome": "OS_event",
     "time_col": "OS_days",
-    "event_col": "OS_event"
+    "event_col": "OS_event",
+    "engine": "pyradiomics"
   },
   "steps": [
     {
@@ -91,7 +92,8 @@
       "args": {
         "manifest": "{outdir}/manifest.csv",
         "pattern": "{pattern}",
-        "output": "{outdir}/features.csv"
+        "output": "{outdir}/features.csv",
+        "engine": "{engine}"
       },
       "inputs": [
         "{outdir}/manifest.csv"

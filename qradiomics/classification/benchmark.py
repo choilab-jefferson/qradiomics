@@ -58,14 +58,16 @@ class BenchmarkResult:
     def summary(self) -> pd.DataFrame:
         rows = []
         for r in sorted(self.model_results, key=lambda x: x.oof_auc, reverse=True):
-            rows.append({
-                "model":        r.model,
-                "oof_auc":      round(r.oof_auc, 4),
-                "oof_ap":       round(r.oof_ap, 4),
-                "oof_brier":    round(r.oof_brier, 4),
-                "cv_auc_mean":  round(r.cv_auc_mean, 4),
-                "cv_auc_std":   round(r.cv_auc_std, 4),
-            })
+            rows.append(
+                {
+                    "model": r.model,
+                    "oof_auc": round(r.oof_auc, 4),
+                    "oof_ap": round(r.oof_ap, 4),
+                    "oof_brier": round(r.oof_brier, 4),
+                    "cv_auc_mean": round(r.cv_auc_mean, 4),
+                    "cv_auc_std": round(r.cv_auc_std, 4),
+                }
+            )
         return pd.DataFrame(rows)
 
     def best(self) -> ModelResult:
@@ -137,13 +139,19 @@ def cross_val_benchmark(
             if grid:
                 if hpo == "optuna":
                     est, bp = _optuna_search(
-                        pipe, grid, X_tr, y_tr,
-                        inner=inner_cv_obj, n_jobs=n_jobs,
-                        n_trials=optuna_trials, rs=random_state + fold_idx,
+                        pipe,
+                        grid,
+                        X_tr,
+                        y_tr,
+                        inner=inner_cv_obj,
+                        n_jobs=n_jobs,
+                        n_trials=optuna_trials,
+                        rs=random_state + fold_idx,
                     )
                 else:
-                    gs = GridSearchCV(pipe, grid, cv=inner_cv_obj,
-                                      scoring="roc_auc", n_jobs=n_jobs, refit=True)
+                    gs = GridSearchCV(
+                        pipe, grid, cv=inner_cv_obj, scoring="roc_auc", n_jobs=n_jobs, refit=True
+                    )
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
                         gs.fit(X_tr, y_tr)
@@ -165,18 +173,22 @@ def cross_val_benchmark(
         # modal best params (most common across folds)
         best_params = _modal_params(best_params_list)
 
-        results.append(ModelResult(
-            model=model_name,
-            cv_auc_mean=float(np.mean(fold_aucs)),
-            cv_auc_std=float(np.std(fold_aucs)),
-            cv_ap_mean=float(np.mean(fold_aps)),
-            best_params=best_params,
-            oof_y_true=y_arr,
-            oof_y_score=oof_scores,
-        ))
+        results.append(
+            ModelResult(
+                model=model_name,
+                cv_auc_mean=float(np.mean(fold_aucs)),
+                cv_auc_std=float(np.std(fold_aucs)),
+                cv_ap_mean=float(np.mean(fold_aps)),
+                best_params=best_params,
+                oof_y_true=y_arr,
+                oof_y_score=oof_scores,
+            )
+        )
 
         if verbose:
-            print(f"    AUC fold-mean={np.mean(fold_aucs):.3f}±{np.std(fold_aucs):.3f}  OOF={results[-1].oof_auc:.3f}")
+            print(
+                f"    AUC fold-mean={np.mean(fold_aucs):.3f}±{np.std(fold_aucs):.3f}  OOF={results[-1].oof_auc:.3f}"
+            )
 
     return BenchmarkResult(
         model_results=results,
@@ -191,6 +203,7 @@ def _modal_params(param_list: list[dict]) -> dict:
     if not param_list:
         return {}
     from collections import Counter
+
     merged: dict[str, list] = {}
     for d in param_list:
         for k, v in d.items():
@@ -200,6 +213,7 @@ def _modal_params(param_list: list[dict]) -> dict:
 
 def _optuna_search(pipe, grid, X_tr, y_tr, *, inner, n_jobs, n_trials, rs):
     import optuna
+
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     def _sample(trial, g):
@@ -209,10 +223,10 @@ def _optuna_search(pipe, grid, X_tr, y_tr, *, inner, n_jobs, n_trials, rs):
         params = _sample(trial, grid)
         p = pipe.set_params(**params)
         from sklearn.model_selection import cross_val_score
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            scores = cross_val_score(p, X_tr, y_tr, cv=inner,
-                                     scoring="roc_auc", n_jobs=n_jobs)
+            scores = cross_val_score(p, X_tr, y_tr, cv=inner, scoring="roc_auc", n_jobs=n_jobs)
         return float(np.mean(scores))
 
     study = optuna.create_study(
