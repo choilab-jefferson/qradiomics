@@ -30,8 +30,7 @@ def _multiclass_df(n_per_class=15, n_classes=3, n_features=4, seed=0):
     return pd.DataFrame(rows)
 
 
-def _multiclass_multi_row_df(n_patients=12, rows_per_patient=3, n_classes=3,
-                             n_features=4, seed=0):
+def _multiclass_multi_row_df(n_patients=12, rows_per_patient=3, n_classes=3, n_features=4, seed=0):
     """Multi-row-per-patient AND multi-class — the qradiomics#10 x #11
     intersection (e.g. a future lesion-grain cohort with a >2-class label).
     Signal is on the features, not perfectly patient-determined, so AUC
@@ -53,12 +52,14 @@ def _multiclass_multi_row_df(n_patients=12, rows_per_patient=3, n_classes=3,
 
 def _binary_df(n=30, seed=0):
     rng = np.random.RandomState(seed)
-    return pd.DataFrame({
-        "patient_id": [f"P{i:03d}" for i in range(n)],
-        "y": rng.randint(0, 2, n),
-        "feat_0": rng.normal(size=n),
-        "feat_1": rng.normal(size=n),
-    })
+    return pd.DataFrame(
+        {
+            "patient_id": [f"P{i:03d}" for i in range(n)],
+            "y": rng.randint(0, 2, n),
+            "feat_0": rng.normal(size=n),
+            "feat_1": rng.normal(size=n),
+        }
+    )
 
 
 def _invoke(*args):
@@ -115,9 +116,24 @@ class TestPredictEvaluateMulticlass:
         df.to_csv(input_csv, index=False)
         model_path = tmp_path / "model.pkl"
         metrics_path = tmp_path / "metrics.json"
-        result = _invoke("ml", "train", "--input", str(input_csv), "--task", "classify",
-                         "--outcome", "y", "--folds", "3", "--top-features", "3",
-                         "--model", str(model_path), "--metrics", str(metrics_path))
+        result = _invoke(
+            "ml",
+            "train",
+            "--input",
+            str(input_csv),
+            "--task",
+            "classify",
+            "--outcome",
+            "y",
+            "--folds",
+            "3",
+            "--top-features",
+            "3",
+            "--model",
+            str(model_path),
+            "--metrics",
+            str(metrics_path),
+        )
         assert result.exit_code == 0, result.output
         return model_path
 
@@ -125,9 +141,18 @@ class TestPredictEvaluateMulticlass:
         df = _multiclass_df()
         model_path = self._train_and_save(tmp_path, df)
         out_csv = tmp_path / "preds.csv"
-        result = _invoke("ml", "predict", "--input", str(tmp_path / "train.csv"),
-                         "--model", str(model_path), "--task", "classify",
-                         "--output", str(out_csv))
+        result = _invoke(
+            "ml",
+            "predict",
+            "--input",
+            str(tmp_path / "train.csv"),
+            "--model",
+            str(model_path),
+            "--task",
+            "classify",
+            "--output",
+            str(out_csv),
+        )
         assert result.exit_code == 0, result.output
         preds = pd.read_csv(out_csv)
         assert {"proba_0", "proba_1", "proba_2", "pred_class"}.issubset(preds.columns)
@@ -139,9 +164,20 @@ class TestPredictEvaluateMulticlass:
         df = _multiclass_df()
         model_path = self._train_and_save(tmp_path, df)
         report_path = tmp_path / "eval.json"
-        result = _invoke("ml", "evaluate", "--input", str(tmp_path / "train.csv"),
-                         "--model", str(model_path), "--task", "classify",
-                         "--outcome", "y", "--report", str(report_path))
+        result = _invoke(
+            "ml",
+            "evaluate",
+            "--input",
+            str(tmp_path / "train.csv"),
+            "--model",
+            str(model_path),
+            "--task",
+            "classify",
+            "--outcome",
+            "y",
+            "--report",
+            str(report_path),
+        )
         assert result.exit_code == 0, result.output
         report = json.loads(report_path.read_text())
         assert report["n_classes"] == 3
@@ -151,9 +187,18 @@ class TestPredictEvaluateMulticlass:
         df = _binary_df()
         model_path = self._train_and_save(tmp_path, df)
         out_csv = tmp_path / "preds.csv"
-        result = _invoke("ml", "predict", "--input", str(tmp_path / "train.csv"),
-                         "--model", str(model_path), "--task", "classify",
-                         "--output", str(out_csv))
+        result = _invoke(
+            "ml",
+            "predict",
+            "--input",
+            str(tmp_path / "train.csv"),
+            "--model",
+            str(model_path),
+            "--task",
+            "classify",
+            "--output",
+            str(out_csv),
+        )
         assert result.exit_code == 0, result.output
         preds = pd.read_csv(out_csv)
         assert list(preds.columns) == ["patient_id", "proba"]
@@ -167,8 +212,9 @@ class TestMulticlassWithGroupedCV:
         # StratifiedGroupKFold enough groups per fold to represent all 3
         # classes reliably (avoids a degenerate single-class test fold).
         df = _multiclass_multi_row_df(n_patients=30, rows_per_patient=3, n_classes=3)
-        _, metrics = _train_classify(df, outcome="y", folds=3, top_features=3,
-                                     group_col="patient_id")
+        _, metrics = _train_classify(
+            df, outcome="y", folds=3, top_features=3, group_col="patient_id"
+        )
         assert metrics["n_classes"] == 3
         assert metrics["group_col"] == "patient_id"
         assert metrics["n_groups"] == 30

@@ -114,7 +114,7 @@ feature_extraction:
     normalize: false
     binWidth: 25
     correctMask: true
-    geometryTolerance: 1e-3
+    geometryTolerance: 1.0e-3
 
   quality_control:
     min_voxels: 64

@@ -16,9 +16,9 @@ import numpy as np
 import SimpleITK as sitk
 
 
-def staple_consensus(reader_masks: Sequence[sitk.Image],
-                     foreground_value: int = 1,
-                     threshold: float = 0.5) -> tuple[sitk.Image, List[float], List[float]]:
+def staple_consensus(
+    reader_masks: Sequence[sitk.Image], foreground_value: int = 1, threshold: float = 0.5
+) -> tuple[sitk.Image, List[float], List[float]]:
     """Combine N per-reader binary masks into a STAPLE consensus mask.
 
     Args:
@@ -38,7 +38,7 @@ def staple_consensus(reader_masks: Sequence[sitk.Image],
     cast = [sitk.Cast(m, sitk.sitkUInt8) for m in reader_masks]
     staple = sitk.STAPLEImageFilter()
     staple.SetForegroundValue(foreground_value)
-    prob = staple.Execute(cast)            # float image, voxel = P(foreground)
+    prob = staple.Execute(cast)  # float image, voxel = P(foreground)
     sens = list(staple.GetSensitivity())
     spec = list(staple.GetSpecificity())
 
@@ -47,10 +47,9 @@ def staple_consensus(reader_masks: Sequence[sitk.Image],
     return binary, sens, spec
 
 
-def staple_patient(patient_dir: str | Path,
-                   pid: str,
-                   out_path: str | Path | None = None,
-                   threshold: float = 0.5) -> dict:
+def staple_patient(
+    patient_dir: str | Path, pid: str, out_path: str | Path | None = None, threshold: float = 0.5
+) -> dict:
     """Run STAPLE across all `{pid}_CT_Phy*-label.nrrd` files in a patient dir.
 
     Args:
@@ -66,12 +65,12 @@ def staple_patient(patient_dir: str | Path,
     patient_dir = Path(patient_dir)
     # Find per-reader (not per-nodule) masks: pattern `..._Phy<n>-label.nrrd`.
     reader_files = sorted(
-        p for p in patient_dir.glob(f"{pid}_CT_Phy*-label.nrrd")
+        p
+        for p in patient_dir.glob(f"{pid}_CT_Phy*-label.nrrd")
         if "_Phy" in p.name and p.name.split("_Phy")[-1].split("-")[0].isdigit()
     )
     if not reader_files:
-        return {"n_readers": 0, "consensus_path": None,
-                "sensitivities": [], "specificities": []}
+        return {"n_readers": 0, "consensus_path": None, "sensitivities": [], "specificities": []}
 
     masks = [sitk.ReadImage(str(p)) for p in reader_files]
     consensus, sens, spec = staple_consensus(masks, threshold=threshold)

@@ -76,11 +76,7 @@ _warn_once._seen = set()  # type: ignore[attr-defined]
 
 
 def _resolve_experiment(experiment: Optional[str], default: str) -> str:
-    return (
-        experiment
-        or os.environ.get("MLFLOW_EXPERIMENT_NAME")
-        or default
-    )
+    return experiment or os.environ.get("MLFLOW_EXPERIMENT_NAME") or default
 
 
 def _join_tags() -> Dict[str, str]:

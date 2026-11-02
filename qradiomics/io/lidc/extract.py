@@ -30,6 +30,7 @@ from .parse_xml import LIDCNodule, parse_lidc_xml
 
 # ─── DICOM walk ─────────────────────────────────────────────────────────────
 
+
 def scan_lidc_dir(root: str | Path) -> Iterator[Tuple[str, Path, Optional[Path]]]:
     """Walk a TCIA-style LIDC-IDRI tree.
 
@@ -74,6 +75,7 @@ def scan_lidc_dir(root: str | Path) -> Iterator[Tuple[str, Path, Optional[Path]]
 def _series_is_ct(dcm_path: Path) -> bool:
     try:
         import pydicom
+
         ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
     except Exception:
         return False
@@ -83,6 +85,7 @@ def _series_is_ct(dcm_path: Path) -> bool:
 
 
 # ─── DICOM tag → z-slice map ────────────────────────────────────────────────
+
 
 def _uid_to_z(dicom_series_dir: Path) -> dict[str, int]:
     """Return `{SOPInstanceUID: z_index}` (0-indexed) for the CT series.
@@ -119,8 +122,8 @@ def _uid_to_z(dicom_series_dir: Path) -> dict[str, int]:
 
 # ─── polygon rasterisation ──────────────────────────────────────────────────
 
-def _rasterise_polygon(x: List[float], y: List[float],
-                       shape: Tuple[int, int]) -> np.ndarray:
+
+def _rasterise_polygon(x: List[float], y: List[float], shape: Tuple[int, int]) -> np.ndarray:
     """Filled polygon → 2D uint8 mask. Replaces MATLAB ``poly2mask``.
 
     Args:
@@ -141,9 +144,10 @@ def _rasterise_polygon(x: List[float], y: List[float],
 
 # ─── nodule rasterisation per reader ────────────────────────────────────────
 
-def _rasterise_nodule(nodule: LIDCNodule,
-                      uid_to_z: dict[str, int],
-                      shape3d: Tuple[int, int, int]) -> np.ndarray:
+
+def _rasterise_nodule(
+    nodule: LIDCNodule, uid_to_z: dict[str, int], shape3d: Tuple[int, int, int]
+) -> np.ndarray:
     """OR together the per-slice polygons of one nodule into a 3D mask."""
     n_slices, n_rows, n_cols = shape3d
     mask = np.zeros(shape3d, dtype=np.uint8)
@@ -158,11 +162,14 @@ def _rasterise_nodule(nodule: LIDCNodule,
 
 # ─── high-level driver ─────────────────────────────────────────────────────
 
-def convert_patient(dicom_series_dir: str | Path,
-                    xml_path: Optional[str | Path],
-                    out_dir: str | Path,
-                    pid: str,
-                    per_nodule_masks: bool = False) -> dict:
+
+def convert_patient(
+    dicom_series_dir: str | Path,
+    xml_path: Optional[str | Path],
+    out_dir: str | Path,
+    pid: str,
+    per_nodule_masks: bool = False,
+) -> dict:
     """Convert one LIDC patient: write CT NRRD + per-reader masks + CSV.
 
     Args:
@@ -186,7 +193,7 @@ def convert_patient(dicom_series_dir: str | Path,
     ct = load_dicom_series(str(dicom_series_dir))
     ct_path = out_dir / f"{pid}_CT.nrrd"
     sitk.WriteImage(ct, str(ct_path))
-    size = ct.GetSize()              # (cols, rows, slices) in SimpleITK
+    size = ct.GetSize()  # (cols, rows, slices) in SimpleITK
     shape3d = (size[2], size[1], size[0])  # (z, y, x) for numpy
 
     result = {
@@ -224,43 +231,53 @@ def convert_patient(dicom_series_dir: str | Path,
                 nm_img = sitk.GetImageFromArray(n_mask)
                 nm_img.CopyInformation(ct)
                 safe_nid = nodule.nodule_id.replace(" ", "_").replace("/", "-")
-                nm_path = (out_dir /
-                           f"{pid}_CT_Phy{reader.session_index}_{safe_nid}-label.nrrd")
+                nm_path = out_dir / f"{pid}_CT_Phy{reader.session_index}_{safe_nid}-label.nrrd"
                 sitk.WriteImage(nm_img, str(nm_path))
 
             # Compute basic stats for the CSV row
-            ct_arr = sitk.GetArrayFromImage(ct)        # numpy z,y,x
+            ct_arr = sitk.GetArrayFromImage(ct)  # numpy z,y,x
             voxel_intensities = ct_arr[n_mask > 0]
-            spacing = ct.GetSpacing()                   # (x, y, z) in mm
+            spacing = ct.GetSpacing()  # (x, y, z) in mm
             voxel_volume_mm3 = float(spacing[0] * spacing[1] * spacing[2])
             nz = np.argwhere(n_mask > 0)
             bbox = (
-                int(nz[:, 2].min()), int(nz[:, 1].min()), int(nz[:, 0].min()),
-                int(np.ptp(nz[:, 2]) + 1), int(np.ptp(nz[:, 1]) + 1), int(np.ptp(nz[:, 0]) + 1),
+                int(nz[:, 2].min()),
+                int(nz[:, 1].min()),
+                int(nz[:, 0].min()),
+                int(np.ptp(nz[:, 2]) + 1),
+                int(np.ptp(nz[:, 1]) + 1),
+                int(np.ptp(nz[:, 0]) + 1),
             )
-            centroid_idx = (float(nz[:, 2].mean()),
-                            float(nz[:, 1].mean()),
-                            float(nz[:, 0].mean()))
+            centroid_idx = (float(nz[:, 2].mean()), float(nz[:, 1].mean()), float(nz[:, 0].mean()))
             safe_nid = nodule.nodule_id.replace(" ", "_").replace("/", "-")
-            nm_rel = (f"{pid}_CT_Phy{reader.session_index}_{safe_nid}-label.nrrd"
-                      if per_nodule_masks else "")
-            csv_rows.append({
-                "pid": pid,
-                "reader": reader.session_index,
-                "nodule_id": nodule.nodule_id,
-                "mask_nrrd": nm_rel,
-                "n_voxels": n_voxels,
-                "volume_mm3": n_voxels * voxel_volume_mm3,
-                "bbox_x": bbox[0], "bbox_y": bbox[1], "bbox_z": bbox[2],
-                "bbox_sx": bbox[3], "bbox_sy": bbox[4], "bbox_sz": bbox[5],
-                "centroid_x_idx": centroid_idx[0],
-                "centroid_y_idx": centroid_idx[1],
-                "centroid_z_idx": centroid_idx[2],
-                "mean_intensity": float(voxel_intensities.mean()),
-                "min_intensity": float(voxel_intensities.min()),
-                "max_intensity": float(voxel_intensities.max()),
-                **asdict(nodule.characteristics),
-            })
+            nm_rel = (
+                f"{pid}_CT_Phy{reader.session_index}_{safe_nid}-label.nrrd"
+                if per_nodule_masks
+                else ""
+            )
+            csv_rows.append(
+                {
+                    "pid": pid,
+                    "reader": reader.session_index,
+                    "nodule_id": nodule.nodule_id,
+                    "mask_nrrd": nm_rel,
+                    "n_voxels": n_voxels,
+                    "volume_mm3": n_voxels * voxel_volume_mm3,
+                    "bbox_x": bbox[0],
+                    "bbox_y": bbox[1],
+                    "bbox_z": bbox[2],
+                    "bbox_sx": bbox[3],
+                    "bbox_sy": bbox[4],
+                    "bbox_sz": bbox[5],
+                    "centroid_x_idx": centroid_idx[0],
+                    "centroid_y_idx": centroid_idx[1],
+                    "centroid_z_idx": centroid_idx[2],
+                    "mean_intensity": float(voxel_intensities.mean()),
+                    "min_intensity": float(voxel_intensities.min()),
+                    "max_intensity": float(voxel_intensities.max()),
+                    **asdict(nodule.characteristics),
+                }
+            )
         if nodules_with_polygons == 0:
             continue
 
@@ -270,17 +287,21 @@ def convert_patient(dicom_series_dir: str | Path,
         msk_path = out_dir / f"{pid}_CT_Phy{reader.session_index}-label.nrrd"
         sitk.WriteImage(msk_img, str(msk_path))
         written_masks.append(str(msk_path))
-        result["readers"].append({
-            "session_index": reader.session_index,
-            "n_nodules": nodules_with_polygons,
-            "mask_nrrd": str(msk_path),
-        })
+        result["readers"].append(
+            {
+                "session_index": reader.session_index,
+                "n_nodules": nodules_with_polygons,
+                "mask_nrrd": str(msk_path),
+            }
+        )
 
     # 4. Write nodules CSV
     if csv_rows:
+        from qradiomics.extractor import union_fieldnames
+
         csv_path = out_dir / f"{pid}_nodules.csv"
         with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=list(csv_rows[0].keys()))
+            writer = csv.DictWriter(f, fieldnames=union_fieldnames(csv_rows), restval="")
             writer.writeheader()
             writer.writerows(csv_rows)
         result["nodules_csv"] = str(csv_path)

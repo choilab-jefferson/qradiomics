@@ -10,13 +10,19 @@ import pytest
 pytest.importorskip("qradiomics_private", reason="requires qradiomics_private overlay")
 
 from qradiomics.shape import (  # type: ignore[import-not-found]
-    AHSNConfig, SNoHConfig, ahsn, snoh, dot_value, make_scales,
+    AHSNConfig,
+    SNoHConfig,
+    ahsn,
+    snoh,
+    dot_value,
+    make_scales,
     surface_elements,
 )
 from qradiomics.shape.phantoms import sphere, cylinder, plane, saddle  # type: ignore
 
 
 # ---- AHSN (2014) ----------------------------------------------------------
+
 
 def test_ahsn_dim_default():
     desc = ahsn(sphere())
@@ -31,6 +37,7 @@ def test_ahsn_normalization():
 
 
 # ---- SNoH (2026) ----------------------------------------------------------
+
 
 def test_snoh_dim_default():
     desc = snoh(sphere())
@@ -49,12 +56,24 @@ def _cosine(a, b):
 
 def test_snoh_separates_shapes():
     """Sphere/cylinder/plane/saddle should have low pairwise cosine sim."""
-    cfg = SNoHConfig(n_scales=2, d_min=4.0, d_max=12.0,
-                     n_bins_theta=18, n_bins_phi=18,
-                     n_bins_shape_index=8, n_bins_curvedness=8)
-    sigs = {name: snoh(make(), cfg=cfg)
-            for name, make in {"sphere": sphere, "cylinder": cylinder,
-                                "plane": plane, "saddle": saddle}.items()}
+    cfg = SNoHConfig(
+        n_scales=2,
+        d_min=4.0,
+        d_max=12.0,
+        n_bins_theta=18,
+        n_bins_phi=18,
+        n_bins_shape_index=8,
+        n_bins_curvedness=8,
+    )
+    sigs = {
+        name: snoh(make(), cfg=cfg)
+        for name, make in {
+            "sphere": sphere,
+            "cylinder": cylinder,
+            "plane": plane,
+            "saddle": saddle,
+        }.items()
+    }
     cos = _cosine(sigs["sphere"], sigs["plane"])
     assert cos < 0.95, f"sphere vs plane too similar: {cos:.3f}"
     cos = _cosine(sigs["sphere"], sigs["cylinder"])
@@ -62,6 +81,7 @@ def test_snoh_separates_shapes():
 
 
 # ---- Dot enhancement filter ------------------------------------------------
+
 
 def test_dot_value_bright_blob_positive():
     v = sphere()
@@ -87,9 +107,10 @@ def test_make_scales_endpoints():
 
 # ---- Wall elimination ------------------------------------------------------
 
+
 def test_wall_eliminate_runs_and_reduces_mask():
     from qradiomics.shape import wall_eliminate  # type: ignore[import-not-found]
+
     v = plane(size=33, thickness=4)
-    _, keep = wall_eliminate(v, cfg=AHSNConfig(n_bins_theta=18, n_bins_phi=18),
-                              area_threshold=20)
+    _, keep = wall_eliminate(v, cfg=AHSNConfig(n_bins_theta=18, n_bins_phi=18), area_threshold=20)
     assert keep.sum() < v.size

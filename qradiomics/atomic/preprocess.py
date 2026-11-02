@@ -58,18 +58,14 @@ def preprocess_pair(
         consistent across the pair.
     """
     if image.GetSize() != mask.GetSize():
-        raise ValueError(
-            f"Image/mask size mismatch: image={image.GetSize()} mask={mask.GetSize()}"
-        )
+        raise ValueError(f"Image/mask size mismatch: image={image.GetSize()} mask={mask.GetSize()}")
 
     stats = sitk.LabelShapeStatisticsImageFilter()
     stats.Execute(mask)
     if stats.GetNumberOfLabels() == 0:
         raise ValueError("Mask contains no foreground voxels — cannot compute bounding box.")
     if label not in stats.GetLabels():
-        raise ValueError(
-            f"Requested label {label} not present in mask labels {stats.GetLabels()}."
-        )
+        raise ValueError(f"Requested label {label} not present in mask labels {stats.GetLabels()}.")
 
     # bbox is (x0, y0, z0, sx, sy, sz)
     bbox = stats.GetBoundingBox(label)
@@ -88,11 +84,16 @@ def preprocess_pair(
 
     if resample_mm is not None:
         if len(resample_mm) != 3:
-            raise ValueError(
-                f"resample_mm must have length 3 (got {len(resample_mm)})."
-            )
+            raise ValueError(f"resample_mm must have length 3 (got {len(resample_mm)}).")
         cropped_image = _resample(cropped_image, resample_mm, image_interpolator)
         cropped_mask = _resample(cropped_mask, resample_mm, mask_interpolator)
+
+    mask_arr = sitk.GetArrayViewFromImage(cropped_mask)
+    if mask_arr.size > 0 and bool((mask_arr == label).all()):
+        raise ValueError(
+            "ROI fills 100% of the cropped volume; PyRadiomics requires at least "
+            "one background voxel (set pad_mm > 0)."
+        )
 
     return cropped_image, cropped_mask
 
@@ -105,8 +106,7 @@ def _resample(
     src_spacing = image.GetSpacing()
     src_size = image.GetSize()
     new_size = [
-        max(1, int(round(src_size[i] * src_spacing[i] / target_spacing[i])))
-        for i in range(3)
+        max(1, int(round(src_size[i] * src_spacing[i] / target_spacing[i]))) for i in range(3)
     ]
     resampler = sitk.ResampleImageFilter()
     resampler.SetOutputSpacing(tuple(float(s) for s in target_spacing))

@@ -108,7 +108,8 @@ class PyseraExtractor:
                 if not result.get("success", False):
                     logger.error(
                         "PySERA extraction failed for %s: %s",
-                        patient_id, result.get("error"),
+                        patient_id,
+                        result.get("error"),
                     )
                     patients_failed += 1
                     continue
@@ -140,9 +141,11 @@ class PyseraExtractor:
 
         features_path = job_dir / "features.csv"
         if all_features:
-            fieldnames = list(all_features[0].keys())
+            from qradiomics.extractor import union_fieldnames
+
+            fieldnames = union_fieldnames(all_features)
             with open(features_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
                 writer.writeheader()
                 writer.writerows(all_features)
 

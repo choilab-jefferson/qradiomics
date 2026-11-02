@@ -29,10 +29,14 @@ def test_rtstruct_unreadable_ct_fails_cleanly(tmp_path, monkeypatch):
         convert,
         [
             "rtstruct",
-            "-d", str(ct_dir),
-            "-r", str(rt_file),
-            "--roi", "GTV-1",
-            "-o", str(tmp_path / "out.nrrd"),
+            "-d",
+            str(ct_dir),
+            "-r",
+            str(rt_file),
+            "--roi",
+            "GTV-1",
+            "-o",
+            str(tmp_path / "out.nrrd"),
         ],
     )
 

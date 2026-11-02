@@ -66,8 +66,18 @@ def list_templates():
 @click.option("--pattern", default="nsclc-survival", help="qr pattern id")
 @click.option("--task", default="survival", help="ml task (survival | classify)")
 @click.option("--outcome", default="OS_event", help="Outcome column name")
-@click.option("--max-series", default=0, type=int,
-              help="Limit TCIA download to N series (tcia_to_ml only; 0 = no limit)")
+@click.option(
+    "--max-series",
+    default=0,
+    type=int,
+    help="Limit TCIA download to N series (tcia_to_ml only; 0 = no limit)",
+)
+@click.option(
+    "--engine",
+    default="pyradiomics",
+    help="Extraction engine(s) for the 'extract' step: pyradiomics, "
+    "pysera, rtools, a comma-list, or 'all' (tcia_to_ml only)",
+)
 @click.option("--outdir", default="runs/cohort", help="Workflow output directory")
 @click.option(
     "--output",
@@ -76,8 +86,20 @@ def list_templates():
     type=click.Path(),
     help="Where to write the plan (JSON or YAML by extension)",
 )
-def plan_cmd(template, cohort_root, collection, clinical, roi, pattern, task, outcome,
-             max_series, outdir, output):
+def plan_cmd(
+    template,
+    cohort_root,
+    collection,
+    clinical,
+    roi,
+    pattern,
+    task,
+    outcome,
+    max_series,
+    engine,
+    outdir,
+    output,
+):
     """Generate a workflow plan from a template."""
     fn = LIBRARY[template]
     sig = fn.__code__.co_varnames[: fn.__code__.co_argcount]
@@ -107,6 +129,8 @@ def plan_cmd(template, cohort_root, collection, clinical, roi, pattern, task, ou
         kwargs["outcome"] = outcome
     if "max_series" in sig:
         kwargs["max_series"] = max_series
+    if "engine" in sig:
+        kwargs["engine"] = engine
 
     plan = fn(**kwargs)
     save_plan(plan, Path(output))
@@ -156,7 +180,7 @@ def scaffold_cmd(plan_path, executor, output):
     type=click.Choice(["inline", "nextflow", "prefect"]),
     default="nextflow",
     help="Execution backend (default nextflow for production; inline for "
-         "small interactive runs; prefect for scheduled / observed runs)",
+    "small interactive runs; prefect for scheduled / observed runs)",
 )
 @click.option("--dry-run", is_flag=True, help="Print commands without executing")
 @click.option(
@@ -165,8 +189,8 @@ def scaffold_cmd(plan_path, executor, output):
     type=int,
     default=None,
     help="Per-patient parallelism for --executor inline (default: $QR_INLINE_WORKERS"
-         " or 4). Ignored by the nextflow / prefect executors (they set their own"
-         " concurrency).",
+    " or 4). Ignored by the nextflow / prefect executors (they set their own"
+    " concurrency).",
 )
 def run_cmd(plan_path, executor, dry_run, workers):
     """Execute a workflow plan.

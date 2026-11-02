@@ -86,15 +86,21 @@ class TestTpotEndToEndTiny:
         from sklearn.datasets import make_classification
 
         X, y = make_classification(
-            n_samples=20, n_features=4, n_informative=3, n_redundant=0,
+            n_samples=20,
+            n_features=4,
+            n_informative=3,
+            n_redundant=0,
             random_state=0,
         )
         pipe, grid = build_model("TPOT", random_state=0)
         assert grid == {}  # AutoML backends manage their own tuning
 
         pipe.set_params(
-            clf__generations=1, clf__population_size=2, clf__cv=2,
-            clf__max_time_mins=1, clf__n_jobs=1,
+            clf__generations=1,
+            clf__population_size=2,
+            clf__cv=2,
+            clf__max_time_mins=1,
+            clf__n_jobs=1,
         )
         pipe.fit(X, y)
 

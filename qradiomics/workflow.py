@@ -34,10 +34,9 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 
 # ─── Data model ──────────────────────────────────────────────────────────────
 
@@ -56,12 +55,12 @@ class WorkflowStep:
     """One atomic qr-CLI invocation within a workflow plan."""
 
     id: str
-    cmd: str                                    # e.g. "convert dicom-series"
-    stage: str = "features"                     # one of STAGES
+    cmd: str  # e.g. "convert dicom-series"
+    stage: str = "features"  # one of STAGES
     args: Dict[str, Any] = field(default_factory=dict)
-    inputs: List[str] = field(default_factory=list)   # logical file refs
+    inputs: List[str] = field(default_factory=list)  # logical file refs
     outputs: List[str] = field(default_factory=list)
-    per_patient: bool = False                   # split across patients when scaffolded
+    per_patient: bool = False  # split across patients when scaffolded
 
 
 @dataclass
@@ -108,6 +107,7 @@ def template_nrrd_survival(
     time_col: str = "OS_days",
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
+    engine: str = "pyradiomics",
 ) -> WorkflowPlan:
     """Cohort already in NRRD form. Manifest -> extract -> merge -> survival."""
     return WorkflowPlan(
@@ -120,6 +120,7 @@ def template_nrrd_survival(
             "image_glob": image_glob,
             "mask_glob": mask_glob,
             "pattern": pattern,
+            "engine": engine,
             "time_col": time_col,
             "event_col": event_col,
         },
@@ -144,6 +145,7 @@ def template_nrrd_survival(
                     "manifest": "{outdir}/manifest.csv",
                     "pattern": "{pattern}",
                     "output": "{outdir}/features.csv",
+                    "engine": "{engine}",
                 },
                 inputs=["{outdir}/manifest.csv"],
                 outputs=["{outdir}/features.csv"],
@@ -187,11 +189,12 @@ def template_dicom_to_ml(
     clinical_csv: str,
     roi: str = "GTV",
     pattern: str = "nsclc-survival",
-    task: str = "survival",          # survival | classify
+    task: str = "survival",  # survival | classify
     outcome: str = "OS_event",
     time_col: str = "OS_days",
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
+    engine: str = "pyradiomics",
 ) -> WorkflowPlan:
     """Full DICOM → outcome-prediction ML model workflow (4 canonical stages).
 
@@ -214,6 +217,7 @@ def template_dicom_to_ml(
             "nrrd_dir": f"{outdir}/nrrd",
             "roi": roi,
             "pattern": pattern,
+            "engine": engine,
             "task": task,
             "outcome": outcome,
             "time_col": time_col,
@@ -281,6 +285,7 @@ def template_dicom_to_ml(
                     "manifest": "{outdir}/manifest.csv",
                     "pattern": "{pattern}",
                     "output": "{outdir}/features.csv",
+                    "engine": "{engine}",
                 },
                 inputs=["{outdir}/manifest.csv"],
                 outputs=["{outdir}/features.csv"],
@@ -340,6 +345,7 @@ def template_dicom_survival(
     roi: str = "GTV",
     pattern: str = "nsclc-survival",
     outdir: str = "runs/cohort",
+    engine: str = "pyradiomics",
 ) -> WorkflowPlan:
     """Cohort ships as DICOM + RTSTRUCT. Adds per-patient convert steps.
 
@@ -353,6 +359,7 @@ def template_dicom_survival(
         mask_glob=f"*_{roi}-label.nrrd",
         pattern=pattern,
         outdir=outdir,
+        engine=engine,
     )
     plan.name = "dicom_survival"
     plan.description = "DICOM -> NRRD (CT + RTSTRUCT) -> extract -> merge -> survival."
@@ -390,6 +397,64 @@ def template_dicom_survival(
     return plan
 
 
+def build_workflow_plan(
+    extraction: Any,
+    per_engine: bool = False,
+    template: str = "dicom_to_ml",
+    **template_kwargs: Any,
+) -> WorkflowPlan:
+    """Build a plan whose features stage follows a FeatureExtractionConfig.
+
+    ``extraction`` is a ``pattern_loader.FeatureExtractionConfig`` (anything
+    exposing ``.engines``). By default the single ``extract`` step gets
+    ``--engine a,b`` for every configured engine. With ``per_engine=True``
+    and more than one engine, the step is split into one ``extract_<engine>``
+    step per engine (each writing ``features_<engine>.csv``) followed by a
+    ``fuse`` step (``qr results fuse``) that rebuilds ``features.csv``.
+    """
+    factories = {
+        "dicom_to_ml": template_dicom_to_ml,
+        "dicom_survival": template_dicom_survival,
+        "nrrd_survival": template_nrrd_survival,
+    }
+    if template not in factories:
+        raise ValueError(f"Unknown template '{template}'. Available: {sorted(factories)}")
+    engines = tuple(extraction.engines)
+    plan = factories[template](engine=",".join(engines), **template_kwargs)
+    if not per_engine or len(engines) < 2:
+        return plan
+
+    idx = next(i for i, st in enumerate(plan.steps) if st.id == "extract")
+    base = plan.steps[idx]
+    split = []
+    for eng in engines:
+        out = f"{{outdir}}/features_{eng}.csv"
+        split.append(
+            WorkflowStep(
+                id=f"extract_{eng}",
+                stage=base.stage,
+                cmd=base.cmd,
+                args={**base.args, "engine": eng, "output": out},
+                inputs=list(base.inputs),
+                outputs=[out],
+                per_patient=base.per_patient,
+            )
+        )
+    fuse = WorkflowStep(
+        id="fuse",
+        stage=base.stage,
+        cmd="results fuse",
+        args={
+            "features": ",".join(f"{eng}={{outdir}}/features_{eng}.csv" for eng in engines),
+            "output": "{outdir}/features.csv",
+        },
+        inputs=[f"{{outdir}}/features_{eng}.csv" for eng in engines],
+        outputs=list(base.outputs),
+    )
+    plan.steps[idx : idx + 1] = split + [fuse]
+    return plan
+
+
 def template_tcia_to_ml(
     collection: str,
     clinical_csv: str,
@@ -404,6 +469,7 @@ def template_tcia_to_ml(
     max_series: int = 0,
     convert_jobs: int = 4,
     extract_jobs: int = 4,
+    engine: str = "pyradiomics",
 ) -> WorkflowPlan:
     """Full TCIA → outcome-prediction ML model workflow (8 steps).
 
@@ -444,6 +510,7 @@ def template_tcia_to_ml(
             "outcome": outcome,
             "time_col": time_col,
             "event_col": event_col,
+            "engine": engine,
         },
         steps=[
             # ── Stage 1: data ────────────────────────────────────────────────
@@ -506,6 +573,7 @@ def template_tcia_to_ml(
                     "pattern": "{pattern}",
                     "output": "{outdir}/features.csv",
                     "jobs": "{extract_jobs}",
+                    "engine": "{engine}",
                 },
                 inputs=["{outdir}/manifest.csv"],
                 outputs=["{outdir}/features.csv"],
@@ -569,8 +637,7 @@ LIBRARY = {
 # ─── Resolver ────────────────────────────────────────────────────────────────
 
 
-def _resolve(value: Any, vars: Dict[str, Any],
-             patient_id: Optional[str] = None) -> Any:
+def _resolve(value: Any, vars: Dict[str, Any], patient_id: Optional[str] = None) -> Any:
     """Substitute {var} placeholders in strings, recursively.
 
     When `patient_id` is given, `{patient_id}` is also substituted — used by
@@ -648,8 +715,13 @@ class WorkflowRunner:
             if step.per_patient:
                 patients = _list_cohort_patients(self.plan.vars.get("cohort_root"))
                 if not patients:
-                    results.append({"id": step.id, "skipped": "no patients found",
-                                    "cohort_root": self.plan.vars.get("cohort_root")})
+                    results.append(
+                        {
+                            "id": step.id,
+                            "skipped": "no patients found",
+                            "cohort_root": self.plan.vars.get("cohort_root"),
+                        }
+                    )
                     continue
                 per_pid_results = self._run_per_patient(step, patients, workers)
                 results.extend(per_pid_results)
@@ -668,15 +740,21 @@ class WorkflowRunner:
                     break
         return results
 
-    def _run_per_patient(self, step: WorkflowStep, patients: List[str],
-                         workers: int) -> List[Dict[str, Any]]:
+    def _run_per_patient(
+        self, step: WorkflowStep, patients: List[str], workers: int
+    ) -> List[Dict[str, Any]]:
         """Fan a per-patient step across `workers` threads, one task per id."""
         out: List[Dict[str, Any]] = []
         if self.dry_run:
             for pid in patients:
-                out.append({"id": step.id, "patient_id": pid,
-                            "cmd": self._build_command(step, patient_id=pid),
-                            "status": "dry-run"})
+                out.append(
+                    {
+                        "id": step.id,
+                        "patient_id": pid,
+                        "cmd": self._build_command(step, patient_id=pid),
+                        "status": "dry-run",
+                    }
+                )
             return out
 
         def _run_one(pid: str) -> Dict[str, Any]:
@@ -687,7 +765,9 @@ class WorkflowRunner:
                 )
             proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
             return {
-                "id": step.id, "patient_id": pid, "cmd": cmd,
+                "id": step.id,
+                "patient_id": pid,
+                "cmd": cmd,
                 "returncode": proc.returncode,
                 "stderr_tail": proc.stderr[-500:] if proc.returncode else "",
             }
@@ -700,7 +780,12 @@ class WorkflowRunner:
 
     def _run_nextflow(self) -> List[Dict[str, Any]]:
         if shutil.which("nextflow") is None:
-            return [{"status": "error", "message": "nextflow not on PATH; pip install nextflow or download from https://nextflow.io"}]
+            return [
+                {
+                    "status": "error",
+                    "message": "nextflow not on PATH; pip install nextflow or download from https://nextflow.io",
+                }
+            ]
         with tempfile.TemporaryDirectory() as tmp:
             nf = Path(tmp) / "qradiomics.nf"
             nf.write_text(scaffold_nextflow(self.plan))
@@ -720,8 +805,7 @@ class WorkflowRunner:
             proc = subprocess.run(cmd, check=False)
             return [{"executor": "prefect", "cmd": cmd, "returncode": proc.returncode}]
 
-    def _build_command(self, step: WorkflowStep,
-                       patient_id: Optional[str] = None) -> List[str]:
+    def _build_command(self, step: WorkflowStep, patient_id: Optional[str] = None) -> List[str]:
         # Use `python -m qradiomics.cli.main` rather than the bare `qr` shim
         # so the runner is robust to PATH and pre-v0.9 shim leftovers.
         parts: List[str] = [sys.executable, "-m", "qradiomics.cli.main"] + step.cmd.split()
@@ -886,7 +970,7 @@ def scaffold_prefect(plan: WorkflowPlan) -> str:
     lines.append("                # relative paths (e.g. `runs/<cohort>/...`). Resolve against")
     lines.append("                # the worker's CWD before turning into a file:// URI.")
     lines.append("                create_link_artifact(")
-    lines.append("                    key=f'{stage}-{p.name.replace(\".\", \"-\")}',")
+    lines.append('                    key=f\'{stage}-{p.name.replace(".", "-")}\',')
     lines.append("                    link=p.resolve().as_uri(),")
     lines.append("                    description=f'{stage} stage artifact: {p.name}',")
     lines.append("                )")
@@ -921,8 +1005,10 @@ def scaffold_prefect(plan: WorkflowPlan) -> str:
         stage_task_names.append(tname)
         lines.append("@task")
         lines.append(f"def {tname}():")
-        lines.append(f'    """Stage `{stage}` — {len(steps_in_stage)} step(s):'
-                     f' {", ".join(s.id for s in steps_in_stage)}."""')
+        lines.append(
+            f'    """Stage `{stage}` — {len(steps_in_stage)} step(s):'
+            f' {", ".join(s.id for s in steps_in_stage)}."""'
+        )
         for step in steps_in_stage:
             args_repr = "{" + ", ".join(f'"{k}": {v!r}' for k, v in step.args.items()) + "}"
             if step.per_patient:
@@ -949,16 +1035,18 @@ def scaffold_prefect(plan: WorkflowPlan) -> str:
     # Any other stage label falls under Phase A by default — keep the
     # classification side-effect-free so callers can extend stages later.
     phase_b_stages = {"modeling"}
-    phase_a_task_names = [n for n, s in zip(stage_task_names, stages_order)
-                          if s not in phase_b_stages]
-    phase_b_task_names = [n for n, s in zip(stage_task_names, stages_order)
-                          if s in phase_b_stages]
+    phase_a_task_names = [
+        n for n, s in zip(stage_task_names, stages_order) if s not in phase_b_stages
+    ]
+    phase_b_task_names = [n for n, s in zip(stage_task_names, stages_order) if s in phase_b_stages]
 
     # ─── Subflow: Phase A (features) ────────────────────────────────────────
     if phase_a_task_names:
         lines.append("@flow(name='phase_a_features')")
         lines.append("def phase_a_features():")
-        lines.append('    """Phase A — PACS/TCIA → features. Nextflow-suited, file-level fan-out."""')
+        lines.append(
+            '    """Phase A — PACS/TCIA → features. Nextflow-suited, file-level fan-out."""'
+        )
         for tname in phase_a_task_names:
             lines.append(f"    {tname}()")
         lines.append("")
@@ -1083,8 +1171,8 @@ def scaffold_nextflow(plan: WorkflowPlan) -> str:
 
 SCAFFOLDERS = {
     "shell": scaffold_shell,
-    "nextflow": scaffold_nextflow,    # default for production / large cohorts
-    "prefect": scaffold_prefect,      # secondary, scheduling / observability
+    "nextflow": scaffold_nextflow,  # default for production / large cohorts
+    "prefect": scaffold_prefect,  # secondary, scheduling / observability
 }
 
 

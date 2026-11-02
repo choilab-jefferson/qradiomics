@@ -68,15 +68,12 @@ def _emit(records: list[dict], fmt: str, columns: Optional[list[str]] = None) ->
         writer.writerows(records)
         return
     widths = {
-        col: max(len(col), *(len(str(row.get(col, ""))) for row in records))
-        for col in columns
+        col: max(len(col), *(len(str(row.get(col, ""))) for row in records)) for col in columns
     }
     click.echo("  ".join(col.ljust(widths[col]) for col in columns))
     click.echo("  ".join("-" * widths[col] for col in columns))
     for row in records:
-        click.echo(
-            "  ".join(str(row.get(col, "")).ljust(widths[col]) for col in columns)
-        )
+        click.echo("  ".join(str(row.get(col, "")).ljust(widths[col]) for col in columns))
 
 
 _PROFILE_OPT = click.option(
@@ -305,9 +302,7 @@ def fetch_cmd(
     out_path = Path(output)
     with get_backend(profile, config_path) as backend:
         if instance_uid:
-            written = backend.fetch_instance(
-                study_uid, series_uid or "", instance_uid, out_path
-            )
+            written = backend.fetch_instance(study_uid, series_uid or "", instance_uid, out_path)
             click.echo(str(written))
         elif series_uid:
             paths = backend.fetch_series(study_uid, series_uid, out_path)
@@ -378,9 +373,7 @@ def _require_orthanc(profile: Optional[str], config_path: Optional[str]) -> Orth
 @_PROFILE_OPT
 @_CONFIG_OPT
 @_FORMAT_OPT
-def modalities_cmd(
-    profile: Optional[str], config_path: Optional[str], fmt: str
-) -> None:
+def modalities_cmd(profile: Optional[str], config_path: Optional[str], fmt: str) -> None:
     """List remote modalities registered on the Orthanc profile."""
     with _require_orthanc(profile, config_path) as backend:
         rows = []
@@ -418,7 +411,9 @@ def modalities_cmd(
 )
 @click.option("--patient-id", help="Filter by PatientID.")
 @click.option("--study-uid", help="Filter by StudyInstanceUID.")
-@click.option("--series-uid", help="Filter by SeriesInstanceUID (requires --level Series or Instance).")
+@click.option(
+    "--series-uid", help="Filter by SeriesInstanceUID (requires --level Series or Instance)."
+)
 @click.option("--modality", help="Filter by Modality (Series-level).")
 @click.option(
     "--filter",
@@ -468,9 +463,7 @@ def retrieve_cmd(
     if modality:
         filters["Modality"] = modality
     if not filters:
-        raise click.UsageError(
-            "At least one filter required (--patient-id, --study-uid, etc.)"
-        )
+        raise click.UsageError("At least one filter required (--patient-id, --study-uid, etc.)")
     with _require_orthanc(profile, config_path) as backend:
         result = backend.retrieve_from(
             remote,

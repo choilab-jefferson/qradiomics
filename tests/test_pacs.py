@@ -137,9 +137,7 @@ def test_orthanc_fetch_series(tmp_path):
                     "MainDicomTags": {"SeriesInstanceUID": "S.UID"},
                 },
             )
-        if request.url.path.startswith("/instances/") and request.url.path.endswith(
-            "/file"
-        ):
+        if request.url.path.startswith("/instances/") and request.url.path.endswith("/file"):
             return httpx.Response(200, content=instance_bytes)
         return httpx.Response(404)
 
@@ -303,10 +301,7 @@ def test_dicomweb_ping_uses_qido():
 def test_make_backend_orthanc(tmp_path):
     cfg = tmp_path / "p.yaml"
     cfg.write_text(
-        "profiles:\n"
-        "  local:\n"
-        "    backend: orthanc\n"
-        "    base_url: http://orthanc:8042\n"
+        "profiles:\n" "  local:\n" "    backend: orthanc\n" "    base_url: http://orthanc:8042\n"
     )
     profile = load_profiles(cfg)["local"]
     backend = pacs.make_backend(profile)
@@ -318,10 +313,7 @@ def test_make_backend_orthanc(tmp_path):
 def test_make_backend_dicomweb_alias(tmp_path):
     cfg = tmp_path / "p.yaml"
     cfg.write_text(
-        "profiles:\n"
-        "  remote:\n"
-        "    backend: wado\n"
-        "    base_url: https://pacs/dicom-web\n"
+        "profiles:\n" "  remote:\n" "    backend: wado\n" "    base_url: https://pacs/dicom-web\n"
     )
     profile = load_profiles(cfg)["remote"]
     backend = pacs.make_backend(profile)
@@ -381,9 +373,7 @@ def test_orthanc_retrieve_from_chains_query_answers_retrieve(monkeypatch):
             body = json.loads(request.content)
             assert body["Synchronous"] is True
             assert body["TargetAet"] == "ORTHANC"
-            return httpx.Response(
-                200, json={"ID": "JOB1", "Path": "/jobs/JOB1"}
-            )
+            return httpx.Response(200, json={"ID": "JOB1", "Path": "/jobs/JOB1"})
         return httpx.Response(404)
 
     backend = _orthanc_backend(handler)

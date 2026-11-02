@@ -1,0 +1,18 @@
+# CT multi-octave LoG scale-cascade parameter file (1, 2, 4, 8 mm physical scales).
+# See penumbra wiki/architecture/Scale-Cascade.md.
+
+imageType:
+  Original: {}
+  LoG:
+    sigma: [1.0, 2.0, 4.0, 8.0]
+  Wavelet: {}
+
+setting:
+  normalize: false
+  binWidth: 25
+  resampledPixelSpacing: [1, 1, 1]
+  interpolator: sitkBSpline
+  padDistance: 10
+  minimumROISize: 10
+  geometryTolerance: 1.0e-3
+  correctMask: true

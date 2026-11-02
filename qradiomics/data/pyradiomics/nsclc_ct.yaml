@@ -28,7 +28,7 @@ setting:
   binWidth: 25
 
   # Geometry: Real-world DICOM/NRRD pairs may have minor geometry mismatches
-  geometryTolerance: 1e-3
+  geometryTolerance: 1.0e-3
   correctMask: true
 
   # Quality control

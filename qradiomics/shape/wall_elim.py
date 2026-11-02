@@ -12,10 +12,14 @@ from .ahsn import AHSNConfig, _ahsn_from_elements, find_tall_peak, normal_spheri
 from .hessian import surface_elements
 
 
-def _orientation_similar(theta: np.ndarray, phi: np.ndarray,
-                          th0: float, ph0: float,
-                          theta_tol_deg: float = 22.5,
-                          phi_tol_deg: float = 22.5) -> np.ndarray:
+def _orientation_similar(
+    theta: np.ndarray,
+    phi: np.ndarray,
+    th0: float,
+    ph0: float,
+    theta_tol_deg: float = 22.5,
+    phi_tol_deg: float = 22.5,
+) -> np.ndarray:
     """Boolean mask: voxels whose normal orientation is within ±tol of (th0,ph0)."""
     dth = np.abs(theta - th0)
     dph = np.abs(phi - ph0)
@@ -23,10 +27,13 @@ def _orientation_similar(theta: np.ndarray, phi: np.ndarray,
     return (dth <= theta_tol_deg) & (dph <= phi_tol_deg)
 
 
-def wall_eliminate(block: np.ndarray, cfg: AHSNConfig | None = None,
-                    area_threshold: int | None = None,
-                    z_score: float = 3.0,
-                    max_iter: int = 8) -> tuple[np.ndarray, np.ndarray]:
+def wall_eliminate(
+    block: np.ndarray,
+    cfg: AHSNConfig | None = None,
+    area_threshold: int | None = None,
+    z_score: float = 3.0,
+    max_iter: int = 8,
+) -> tuple[np.ndarray, np.ndarray]:
     """Refine AHSN descriptor by removing wall-like surfaces.
 
     Returns:

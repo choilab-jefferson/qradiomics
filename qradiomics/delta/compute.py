@@ -32,6 +32,7 @@ def compute_delta(
     feature_cols: Optional[Sequence[str]] = None,
     key_cols: Sequence[str] = _DEFAULT_KEY_COLS,
     timepoint_col: str = _DEFAULT_TIMEPOINT_COL,
+    relative: bool = False,
 ) -> pd.DataFrame:
     """Return ``feature(late) − feature(early)`` per group.
 
@@ -43,6 +44,8 @@ def compute_delta(
             columns that are not in ``key_cols`` or ``timepoint_col``.
         key_cols: Grouping columns (default ``(patient_id, roi_name)``).
         timepoint_col: Column selecting the timepoint within a group.
+        relative: When True return ``(late − early) / |early| * 100`` (percent);
+            NaN where ``|early| < 1e-10``. Default is the absolute difference.
 
     Returns:
         DataFrame with ``key_cols`` plus one ``delta_<feature>`` column
@@ -72,6 +75,9 @@ def compute_delta(
         return pd.DataFrame(columns=list(key_cols) + [f"delta_{c}" for c in feature_cols])
 
     delta = late_grp.loc[common] - early_grp.loc[common]
+    if relative:
+        base = early_grp.loc[common]
+        delta = delta / base.abs().where(base.abs() >= 1e-10) * 100.0
     delta = delta.rename(columns={c: f"delta_{c}" for c in feature_cols})
     return delta.reset_index()
 
@@ -127,7 +133,12 @@ def compute_trend(
             t = group[time_index_col].to_numpy(dtype=float)
         else:
             t = np.arange(len(group), dtype=float)
-        row: dict = {col: val for col, val in zip(key_cols, group_key if isinstance(group_key, tuple) else (group_key,))}
+        row: dict = {
+            col: val
+            for col, val in zip(
+                key_cols, group_key if isinstance(group_key, tuple) else (group_key,)
+            )
+        }
         for col in feature_cols:
             y = group[col].to_numpy(dtype=float)
             mask = np.isfinite(y) & np.isfinite(t)
@@ -152,7 +163,5 @@ def _infer_feature_cols(
     if time_index_col:
         skip.add(time_index_col)
     return [
-        c
-        for c in features.columns
-        if c not in skip and pd.api.types.is_numeric_dtype(features[c])
+        c for c in features.columns if c not in skip and pd.api.types.is_numeric_dtype(features[c])
     ]

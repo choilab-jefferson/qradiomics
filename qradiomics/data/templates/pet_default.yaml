@@ -1,0 +1,98 @@
+# PET Default Radiomics Pattern Template
+# General PET radiomics with all 9 image types for maximum feature extraction
+# PET counterpart of ct_default.yaml; without it, PET extraction bypassed patterns entirely.
+
+pattern_id: pet-default
+name: "PET Default Radiomics"
+version: "1.0"
+description: |
+  General purpose PET (FDG) radiomics pattern with all 9 PyRadiomics image types.
+  Extracts 1000+ features per patient from Original, Exponential, Gradient,
+  LBP2D, LBP3D, Logarithm, Square, SquareRoot, and Wavelet image types.
+  Operates on SUV, so binWidth is 0.25 and normalization stays off.
+
+tags:
+  - pet
+  - general
+  - multi-type
+
+author: "QRadiomics Team"
+created_at: "2026-08-19"
+updated_at: "2026-08-19"
+
+requirements:
+  modalities:
+    - modality: PT
+      required: true
+      description: "PET imaging (SUV)"
+    - modality: RTSTRUCT
+      required: false
+      description: "Segmentation (optional but recommended)"
+
+  anatomical_region: any
+
+  clinical_variables:
+    required: []
+    optional: []
+
+preprocessing:
+  # The canonical JeffLuRa pet_default performs no resampling, and PET voxels are typically
+  # ~4 mm, so the CT template's 1 mm isotropic grid is not carried over here.
+  resample_spacing: null
+  interpolate: sitkBSpline
+  mask_padding: 5
+
+feature_extraction:
+  extractor: pyradiomics
+  config_ref: pyradiomics/pet_default.yaml
+
+  # All 9 image types for 1000+ features
+  image_types:
+    - Original
+    - Exponential
+    - Gradient
+    - LBP2D
+    - LBP3D
+    - Logarithm
+    - Square
+    - SquareRoot
+    - Wavelet
+
+  feature_classes:
+    - firstorder
+    - shape
+    - glcm
+    - glrlm
+    - glszm
+    - gldm
+    - ngtdm
+
+  settings:
+    # SUV bin width; normalize must stay false or the SUV calibration the bin width is
+    # chosen against is discarded and every texture feature degenerates.
+    binWidth: 0.25
+    correctMask: true
+    geometryTolerance: 1.0e-3
+    interpolator: sitkBSpline
+    normalize: false
+
+  quality_control:
+    min_roi_size: 10
+    min_dimensions: 2
+
+analysis:
+  methods:
+    - survival
+    - classification
+
+reporting:
+  report_types:
+    - feature_statistics
+    - model_performance
+    - feature_importance
+
+execution:
+  batch_size: 10
+  concurrency: 1
+  retry_on_failure: true
+  max_retries: 3

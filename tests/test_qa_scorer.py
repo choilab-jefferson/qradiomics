@@ -146,6 +146,7 @@ def test_c01_passes_infold_reduction(tmp_path):
 # C07 EPV
 # --------------------------------------------------------------------------- #
 
+
 def test_c07_epv_explicit_pass():
     assert detect_c07_epv(n_events=100, n_features=8).verdict is Verdict.PASS
 
@@ -161,10 +162,14 @@ def test_c07_epv_explicit_fail():
 
 
 def test_c07_epv_from_table():
-    df = pd.DataFrame({
-        "event": [0, 1, 1, 0, 1, 1, 1, 0],   # 5 events
-        "f1": range(8), "f2": range(8), "f3": range(8),
-    })
+    df = pd.DataFrame(
+        {
+            "event": [0, 1, 1, 0, 1, 1, 1, 0],  # 5 events
+            "f1": range(8),
+            "f2": range(8),
+            "f3": range(8),
+        }
+    )
     # 5 events / 3 features = 1.67 -> FAIL
     check = detect_c07_epv(features=df, events_col="event")
     assert check.verdict is Verdict.FAIL
@@ -175,15 +180,16 @@ def test_c07_epv_from_table():
 # C17 naming compliance
 # --------------------------------------------------------------------------- #
 
+
 def test_c17_naming_fraction():
     cols = [
-        "patient_id",                       # ignored
-        "original_glcm_Contrast",           # compliant
-        "wavelet-LLH_firstorder_Mean",      # compliant
+        "patient_id",  # ignored
+        "original_glcm_Contrast",  # compliant
+        "wavelet-LLH_firstorder_Mean",  # compliant
         "log-sigma-3-0-mm-3D_glrlm_GrayLevelNonUniformity",  # compliant
-        "morph.vol",                        # compliant (IBSI code)
-        "my_random_feature",                # NOT compliant
-        "age",                              # NOT compliant
+        "morph.vol",  # compliant (IBSI code)
+        "my_random_feature",  # NOT compliant
+        "age",  # NOT compliant
     ]
     check = detect_c17_naming(cols, ignore=["patient_id"])
     assert check.verdict is Verdict.GRADED
@@ -200,12 +206,13 @@ def test_c17_naming_na_when_empty():
 # Scorecard weighting + gating cap
 # --------------------------------------------------------------------------- #
 
+
 def test_scorecard_weighted_pct_drops_na():
     card = Scorecard()
-    card.add(Check("C07", Verdict.PASS))        # 1.0
-    card.add(Check("C06", Verdict.FAIL))        # 0.0
+    card.add(Check("C07", Verdict.PASS))  # 1.0
+    card.add(Check("C06", Verdict.FAIL))  # 0.0
     card.add(Check("C17", Verdict.GRADED, fraction=0.5))  # 0.5
-    card.add(Check("C04", Verdict.NA))          # excluded
+    card.add(Check("C04", Verdict.NA))  # excluded
     # (1 + 0 + 0.5) / 3 applicable = 0.5 -> 50%
     assert card.weighted_pct == pytest.approx(50.0)
     assert card.n_applicable if hasattr(card, "n_applicable") else True
@@ -217,8 +224,8 @@ def test_scorecard_gating_cap():
     # high raw score but a failed GATE (C01) must cap band at moderate
     for cid in ("C07", "C06", "C17", "C24"):
         card.add(Check(cid, Verdict.PASS))
-    card.add(Check("C01", Verdict.FAIL))   # gating fail
-    assert card.weighted_pct > 60          # raw would be 'good'/'excellent'
+    card.add(Check("C01", Verdict.FAIL))  # gating fail
+    assert card.weighted_pct > 60  # raw would be 'good'/'excellent'
     assert card.gate_capped is True
     assert card.failed_gates[0].id == "C01"
     assert card.band == "Moderate"

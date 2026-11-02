@@ -68,13 +68,20 @@ class TestBenchAndMlBenchmarkEquivalence:
 
     def _common_flags(self, csv_path, output_dir):
         return [
-            "--input", str(csv_path),
-            "--outcome", "event",
-            "--models", "LR",
-            "--cv", "3",
-            "--inner-cv", "2",
-            "--seed", "7",
-            "--output-dir", str(output_dir),
+            "--input",
+            str(csv_path),
+            "--outcome",
+            "event",
+            "--models",
+            "LR",
+            "--cv",
+            "3",
+            "--inner-cv",
+            "2",
+            "--seed",
+            "7",
+            "--output-dir",
+            str(output_dir),
         ]
 
     def test_cv_results_match(self, tiny_classification_csv, tmp_path):
@@ -87,8 +94,12 @@ class TestBenchAndMlBenchmarkEquivalence:
         benchmark_out = tmp_path / "benchmark_out"
         r_benchmark = runner.invoke(
             ml,
-            ["benchmark", *self._common_flags(tiny_classification_csv, benchmark_out),
-             "--corr-threshold", "1.0"],
+            [
+                "benchmark",
+                *self._common_flags(tiny_classification_csv, benchmark_out),
+                "--corr-threshold",
+                "1.0",
+            ],
         )
         assert r_benchmark.exit_code == 0, r_benchmark.output
 
@@ -109,14 +120,22 @@ class TestMlClassifyAndMlBenchmarkEquivalence:
 
     def _common_flags(self, csv_path, output_dir):
         return [
-            "--input", str(csv_path),
-            "--outcome", "event",
-            "--models", "LR",
-            "--cv", "3",
-            "--inner-cv", "2",
-            "--seed", "7",
-            "--corr-threshold", "0.95",
-            "--output-dir", str(output_dir),
+            "--input",
+            str(csv_path),
+            "--outcome",
+            "event",
+            "--models",
+            "LR",
+            "--cv",
+            "3",
+            "--inner-cv",
+            "2",
+            "--seed",
+            "7",
+            "--corr-threshold",
+            "0.95",
+            "--output-dir",
+            str(output_dir),
         ]
 
     def test_cv_results_match(self, tiny_classification_csv, tmp_path):
@@ -149,30 +168,44 @@ class TestArtefactsProduced:
         result = CliRunner().invoke(
             bench,
             [
-                "--input", str(tiny_classification_csv),
-                "--outcome", "event",
-                "--models", "LR",
-                "--cv", "3",
-                "--inner-cv", "2",
-                "--output-dir", str(out),
+                "--input",
+                str(tiny_classification_csv),
+                "--outcome",
+                "event",
+                "--models",
+                "LR",
+                "--cv",
+                "3",
+                "--inner-cv",
+                "2",
+                "--output-dir",
+                str(out),
             ],
         )
         assert result.exit_code == 0, result.output
         assert (out / "bench_report.html").exists()
         assert "Artefacts" in result.output
 
-    def test_ml_benchmark_writes_html_report_with_own_title(self, tiny_classification_csv, tmp_path):
+    def test_ml_benchmark_writes_html_report_with_own_title(
+        self, tiny_classification_csv, tmp_path
+    ):
         out = tmp_path / "benchmark_out"
         result = CliRunner().invoke(
             ml,
             [
                 "benchmark",
-                "--input", str(tiny_classification_csv),
-                "--outcome", "event",
-                "--models", "LR",
-                "--cv", "3",
-                "--inner-cv", "2",
-                "--output-dir", str(out),
+                "--input",
+                str(tiny_classification_csv),
+                "--outcome",
+                "event",
+                "--models",
+                "LR",
+                "--cv",
+                "3",
+                "--inner-cv",
+                "2",
+                "--output-dir",
+                str(out),
             ],
         )
         assert result.exit_code == 0, result.output
@@ -189,12 +222,18 @@ class TestArtefactsProduced:
             ml,
             [
                 "classify",
-                "--input", str(tiny_classification_csv),
-                "--outcome", "event",
-                "--models", "LR",
-                "--cv", "3",
-                "--inner-cv", "2",
-                "--output-dir", str(out),
+                "--input",
+                str(tiny_classification_csv),
+                "--outcome",
+                "event",
+                "--models",
+                "LR",
+                "--cv",
+                "3",
+                "--inner-cv",
+                "2",
+                "--output-dir",
+                str(out),
             ],
         )
         assert result.exit_code == 0, result.output

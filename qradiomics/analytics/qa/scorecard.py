@@ -133,8 +133,7 @@ class Scorecard:
 
     @property
     def failed_gates(self) -> list[Check]:
-        return [c for c in self.checks
-                if c.gating and c.verdict is Verdict.FAIL]
+        return [c for c in self.checks if c.gating and c.verdict is Verdict.FAIL]
 
     @property
     def gate_capped(self) -> bool:
@@ -173,11 +172,13 @@ class Scorecard:
             "",
             f"- **Weighted score**: {self.weighted_pct:.1f}%",
             f"- **Band**: {self.band}"
-            + (f"  _(capped to moderate: failed gate(s) "
-               f"{', '.join(c.id for c in self.failed_gates)})_"
-               if self.gate_capped else ""),
-            f"- **Applicable checks**: {len(self.applicable_checks)} / "
-            f"{len(self.checks)}",
+            + (
+                f"  _(capped to moderate: failed gate(s) "
+                f"{', '.join(c.id for c in self.failed_gates)})_"
+                if self.gate_capped
+                else ""
+            ),
+            f"- **Applicable checks**: {len(self.applicable_checks)} / " f"{len(self.checks)}",
             "",
             "| ID | Check | Gate | Verdict | Score | Notes |",
             "|----|-------|:----:|---------|:-----:|-------|",
@@ -186,10 +187,7 @@ class Scorecard:
             val = "-" if c.value is None else f"{c.value:.2f}"
             gate = "G" if c.gating else ""
             msg = c.message.replace("|", "/").replace("\n", " ")
-            lines.append(
-                f"| {c.id} | {c.name} | {gate} | {c.verdict.value} | "
-                f"{val} | {msg} |"
-            )
+            lines.append(f"| {c.id} | {c.name} | {gate} | {c.verdict.value} | " f"{val} | {msg} |")
         # Evidence detail for any check that produced findings.
         detailed = [c for c in self.checks if c.evidence]
         if detailed:

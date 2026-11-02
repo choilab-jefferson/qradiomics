@@ -80,8 +80,15 @@ class Characteristics:
             return cls()
         kwargs = {}
         for f in (
-            "subtlety", "internalStructure", "calcification", "sphericity",
-            "margin", "lobulation", "spiculation", "texture", "malignancy",
+            "subtlety",
+            "internalStructure",
+            "calcification",
+            "sphericity",
+            "margin",
+            "lobulation",
+            "spiculation",
+            "texture",
+            "malignancy",
         ):
             node = _find_first(ch_elem, f)
             try:
@@ -96,8 +103,8 @@ class LIDCROI:
     """One contour on one CT slice."""
 
     image_sop_uid: str
-    image_z_position: float          # mm
-    inclusion: bool                  # TRUE = solid contour, FALSE = exclusion (hole)
+    image_z_position: float  # mm
+    inclusion: bool  # TRUE = solid contour, FALSE = exclusion (hole)
     x_coords: List[float] = field(default_factory=list)  # pixel x (0-indexed, may be sub-pixel)
     y_coords: List[float] = field(default_factory=list)
 
@@ -149,10 +156,11 @@ class NonNoduleMark:
     *hard* negative class for nodule detection classifiers (Choi 2014 CMPB)
     — these are real radiologist-flagged objects that are NOT nodules.
     """
+
     non_nodule_id: str
     image_sop_uid: str
-    image_z_position: float       # mm
-    x_coord: float                # pixel
+    image_z_position: float  # mm
+    x_coord: float  # pixel
     y_coord: float
 
     @classmethod
@@ -169,13 +177,16 @@ class NonNoduleMark:
             return None
         try:
             z = float(zpos.text) if zpos is not None and zpos.text else 0.0
-            x = float(xn.text); y = float(yn.text)
+            x = float(xn.text)
+            y = float(yn.text)
         except (TypeError, ValueError):
             return None
         return cls(
             non_nodule_id=(nid.text or "").strip() if nid is not None else "",
             image_sop_uid=(uid.text or "").strip(),
-            image_z_position=z, x_coord=x, y_coord=y,
+            image_z_position=z,
+            x_coord=x,
+            y_coord=y,
         )
 
 
@@ -183,7 +194,7 @@ class NonNoduleMark:
 class LIDCReader:
     """One radiologist's reading session."""
 
-    session_index: int               # 1..4
+    session_index: int  # 1..4
     annotation_version: str = ""
     nodules: List[LIDCNodule] = field(default_factory=list)
     non_nodules: List[NonNoduleMark] = field(default_factory=list)
@@ -218,9 +229,13 @@ def parse_lidc_xml(xml_path: str | Path) -> List[LIDCReader]:
                 roi = LIDCROI.from_element(roi_elem)
                 if roi is not None and roi.inclusion:
                     rois.append(roi)
-            reader.nodules.append(LIDCNodule(
-                nodule_id=nodule_id, characteristics=ch, rois=rois,
-            ))
+            reader.nodules.append(
+                LIDCNodule(
+                    nodule_id=nodule_id,
+                    characteristics=ch,
+                    rois=rois,
+                )
+            )
         # Also collect nonNodule findings for this reader (hard negatives)
         for nn_elem in _find_all(session, "nonNodule"):
             nn = NonNoduleMark.from_element(nn_elem)

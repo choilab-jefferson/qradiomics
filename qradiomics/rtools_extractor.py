@@ -136,7 +136,13 @@ class RtoolsExtractor:
         if jobs <= 1:
             for row in to_run:
                 result = self._extract_one(
-                    binary_path, label, feature_select, bins, timeout, job_dir, row,
+                    binary_path,
+                    label,
+                    feature_select,
+                    bins,
+                    timeout,
+                    job_dir,
+                    row,
                 )
                 if result is not None:
                     all_features.append(result)
@@ -147,8 +153,14 @@ class RtoolsExtractor:
             with ThreadPoolExecutor(max_workers=jobs) as ex:
                 future_to_pid = {
                     ex.submit(
-                        self._extract_one, binary_path, label, feature_select, bins,
-                        timeout, job_dir, row,
+                        self._extract_one,
+                        binary_path,
+                        label,
+                        feature_select,
+                        bins,
+                        timeout,
+                        job_dir,
+                        row,
                     ): row.get("patient_id")
                     for row in to_run
                 }
@@ -162,9 +174,11 @@ class RtoolsExtractor:
 
         features_path = job_dir / "features.csv"
         if all_features:
-            fieldnames = list(all_features[0].keys())
+            from qradiomics.extractor import union_fieldnames
+
+            fieldnames = union_fieldnames(all_features)
             with open(features_path, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=fieldnames, restval="")
                 writer.writeheader()
                 writer.writerows(all_features)
 
@@ -214,8 +228,13 @@ class RtoolsExtractor:
         try:
             subprocess.run(
                 [
-                    str(binary_path), str(image_path), str(mask_path),
-                    str(out_txt), label, feature_select, bins,
+                    str(binary_path),
+                    str(image_path),
+                    str(mask_path),
+                    str(out_txt),
+                    label,
+                    feature_select,
+                    bins,
                 ],
                 capture_output=True,
                 timeout=timeout,
@@ -229,7 +248,9 @@ class RtoolsExtractor:
         except subprocess.CalledProcessError as e:
             logger.error(
                 "radiomics-tools binary failed for %s: exit %s: %s",
-                patient_id, e.returncode, e.stderr,
+                patient_id,
+                e.returncode,
+                e.stderr,
             )
             return None
         except subprocess.TimeoutExpired:

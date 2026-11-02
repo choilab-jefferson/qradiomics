@@ -41,8 +41,7 @@ from qradiomics.atomic import (
 )
 
 
-def _sphere_image_and_mask(size=(40, 40, 40), radius=8.0,
-                            spacing=(1.0, 1.0, 1.0)):
+def _sphere_image_and_mask(size=(40, 40, 40), radius=8.0, spacing=(1.0, 1.0, 1.0)):
     zc, yc, xc = [s / 2 for s in size]
     zz, yy, xx = np.meshgrid(
         np.arange(size[2]) - zc,
@@ -51,14 +50,17 @@ def _sphere_image_and_mask(size=(40, 40, 40), radius=8.0,
         indexing="ij",
     )
     dist2 = (xx * spacing[0]) ** 2 + (yy * spacing[1]) ** 2 + (zz * spacing[2]) ** 2
-    intensity = np.where(dist2 < radius ** 2, 100.0, -200.0).astype(np.float32)
-    mask_arr = (dist2 < radius ** 2).astype(np.uint8)
-    img = sitk.GetImageFromArray(intensity); img.SetSpacing(spacing)
-    msk = sitk.GetImageFromArray(mask_arr); msk.SetSpacing(spacing)
+    intensity = np.where(dist2 < radius**2, 100.0, -200.0).astype(np.float32)
+    mask_arr = (dist2 < radius**2).astype(np.uint8)
+    img = sitk.GetImageFromArray(intensity)
+    img.SetSpacing(spacing)
+    msk = sitk.GetImageFromArray(mask_arr)
+    msk.SetSpacing(spacing)
     return img, msk
 
 
 # ─── io ─────────────────────────────────────────────────────────────────────
+
 
 class TestLoadAndGeometry:
     def test_round_trip(self, tmp_path):
@@ -86,20 +88,21 @@ class TestLoadAndGeometry:
 
 # ─── preprocess ─────────────────────────────────────────────────────────────
 
+
 class TestPreprocessPair:
     def test_crop_produces_smaller_or_equal_volume(self):
         img, msk = _sphere_image_and_mask()
         img_c, msk_c = preprocess_pair(img, msk, pad_mm=5.0, resample_mm=None)
         assert img_c.GetSize() == msk_c.GetSize()
-        assert any(a < b for a, b in zip(img_c.GetSize(), img.GetSize())) \
-            or img_c.GetSize() == img.GetSize()  # tiny phantom may not actually shrink
+        assert (
+            any(a < b for a, b in zip(img_c.GetSize(), img.GetSize()))
+            or img_c.GetSize() == img.GetSize()
+        )  # tiny phantom may not actually shrink
 
     def test_resample_tuple(self):
         """JLR call site passes resample_mm as (sx, sy, sz)."""
         img, msk = _sphere_image_and_mask(spacing=(0.5, 0.5, 2.0))
-        img_r, msk_r = preprocess_pair(
-            img, msk, pad_mm=5.0, resample_mm=(1.0, 1.0, 1.0)
-        )
+        img_r, msk_r = preprocess_pair(img, msk, pad_mm=5.0, resample_mm=(1.0, 1.0, 1.0))
         assert all(abs(s - 1.0) < 1e-6 for s in img_r.GetSpacing())
         vals = set(np.unique(sitk.GetArrayFromImage(msk_r)))
         assert vals.issubset({0, 1})
@@ -120,6 +123,7 @@ class TestPreprocessPair:
 
 
 # ─── feature extraction ────────────────────────────────────────────────────
+
 
 class TestFeatureExtraction:
     def test_basic_extraction(self):
@@ -146,6 +150,7 @@ class TestFeatureExtraction:
 
 # ─── registration ───────────────────────────────────────────────────────────
 
+
 class TestRegistration:
     def test_self_register_returns_transform_and_resampled(self):
         img, _ = _sphere_image_and_mask()
@@ -166,6 +171,7 @@ class TestRegistration:
 
 
 # ─── HU correction ──────────────────────────────────────────────────────────
+
 
 class TestHUCorrection:
     def test_self_match_preserves_mean(self):

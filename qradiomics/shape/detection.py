@@ -45,14 +45,18 @@ def make_scales(d_min: float, d_max: float, n: int = 5) -> list[float]:
     """Eq. 7 — log-spaced σ values in range [d_min/4, d_max/4]."""
     s0, s1 = d_min / 4.0, d_max / 4.0
     r = (s1 / s0) ** (1.0 / (n - 1))
-    return [s0 * r ** k for k in range(n)]
+    return [s0 * r**k for k in range(n)]
 
 
-def detect_candidates(volume: np.ndarray, lung_mask: np.ndarray | None = None,
-                       d_min: float = 3.0, d_max: float = 30.0,
-                       n_scales: int = 5,
-                       nms_radius: int = 3,
-                       threshold: float | None = None) -> list[Candidate]:
+def detect_candidates(
+    volume: np.ndarray,
+    lung_mask: np.ndarray | None = None,
+    d_min: float = 3.0,
+    d_max: float = 30.0,
+    n_scales: int = 5,
+    nms_radius: int = 3,
+    threshold: float | None = None,
+) -> list[Candidate]:
     """Multi-scale dot enhancement + per-scale local-max NMS.
 
     Args:
@@ -82,13 +86,15 @@ def detect_candidates(volume: np.ndarray, lung_mask: np.ndarray | None = None,
         zz, yy, xx = np.where(hits)
         diameter = 4.0 * sigma
         for z, y, x in zip(zz, yy, xx):
-            out.append(Candidate(int(z), int(y), int(x),
-                                 float(sigma), float(diameter), float(d[z, y, x])))
+            out.append(
+                Candidate(int(z), int(y), int(x), float(sigma), float(diameter), float(d[z, y, x]))
+            )
     return out
 
 
-def extract_block(volume: np.ndarray, c: Candidate,
-                  boundary: int = 2) -> tuple[np.ndarray, tuple[int, int, int]]:
+def extract_block(
+    volume: np.ndarray, c: Candidate, boundary: int = 2
+) -> tuple[np.ndarray, tuple[int, int, int]]:
     """Extract centered cubic block of size K = ceil(4σ) + 2b (Eq. 9).
 
     Returns (block, top_left_corner).
@@ -101,10 +107,12 @@ def extract_block(volume: np.ndarray, c: Candidate,
     z1, y1, x1 = z0 + K, y0 + K, x0 + K
     Z, Y, X = volume.shape
     # pad if out of bounds
-    pad = [(max(0, -z0), max(0, z1 - Z)),
-           (max(0, -y0), max(0, y1 - Y)),
-           (max(0, -x0), max(0, x1 - X))]
+    pad = [
+        (max(0, -z0), max(0, z1 - Z)),
+        (max(0, -y0), max(0, y1 - Y)),
+        (max(0, -x0), max(0, x1 - X)),
+    ]
     v_pad = np.pad(volume, pad, mode="edge")
     z0p, y0p, x0p = z0 + pad[0][0], y0 + pad[1][0], x0 + pad[2][0]
-    blk = v_pad[z0p:z0p + K, y0p:y0p + K, x0p:x0p + K]
+    blk = v_pad[z0p : z0p + K, y0p : y0p + K, x0p : x0p + K]
     return blk.astype(np.float32, copy=False), (z0, y0, x0)

@@ -26,9 +26,17 @@ def test_binary_not_found(tmp_path, monkeypatch):
     monkeypatch.setenv("QRADIOMICS_RTOOLS_BIN", str(missing_bin))
 
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -51,10 +59,23 @@ def test_happy_path_two_patients(tmp_path, monkeypatch):
     monkeypatch.setenv("QRADIOMICS_RTOOLS_BIN", str(fake_bin))
 
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -98,10 +119,23 @@ def test_subprocess_failure_isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("QRADIOMICS_RTOOLS_BIN", str(fake_bin))
 
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "bad.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "good.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "bad.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "good.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -131,10 +165,18 @@ def test_skip_empty_mask(tmp_path, monkeypatch):
     monkeypatch.setenv("QRADIOMICS_RTOOLS_BIN", str(fake_bin))
 
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": ""},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": ""},
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 
@@ -157,15 +199,17 @@ def test_skip_empty_mask(tmp_path, monkeypatch):
 
 
 def test_parse_feature_txt():
-    sample = "\n".join([
-        "firstorder_Mean=5.5",
-        "PrincipalAxes=1 0 0",
-        "Eigenvectors=0 1 0",
-        "shape_Volume=1.5[extra stuff]",
-        "bad_key=notanumber",
-        "",
-        "no_equals_sign_here",
-    ])
+    sample = "\n".join(
+        [
+            "firstorder_Mean=5.5",
+            "PrincipalAxes=1 0 0",
+            "Eigenvectors=0 1 0",
+            "shape_Volume=1.5[extra stuff]",
+            "bad_key=notanumber",
+            "",
+            "no_equals_sign_here",
+        ]
+    )
 
     feats = parse_feature_txt(sample)
 
@@ -181,10 +225,23 @@ def test_jobs_parallel_path(tmp_path, monkeypatch):
     monkeypatch.setenv("QRADIOMICS_RTOOLS_BIN", str(fake_bin))
 
     manifest = tmp_path / "manifest.csv"
-    _write_manifest(manifest, [
-        {"patient_id": "P001", "modality": "CT", "image_path": "img1.nrrd", "mask_path": "mask1.nrrd"},
-        {"patient_id": "P002", "modality": "CT", "image_path": "img2.nrrd", "mask_path": "mask2.nrrd"},
-    ])
+    _write_manifest(
+        manifest,
+        [
+            {
+                "patient_id": "P001",
+                "modality": "CT",
+                "image_path": "img1.nrrd",
+                "mask_path": "mask1.nrrd",
+            },
+            {
+                "patient_id": "P002",
+                "modality": "CT",
+                "image_path": "img2.nrrd",
+                "mask_path": "mask2.nrrd",
+            },
+        ],
+    )
     job_dir = tmp_path / "job"
     job_dir.mkdir()
 

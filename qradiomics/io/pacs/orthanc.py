@@ -45,11 +45,7 @@ class OrthancBackend(PACSBackend):
         **_: Any,
     ) -> None:
         self.name = name
-        self.base_url = (
-            base_url
-            or os.environ.get("ORTHANC_URL")
-            or "http://localhost:8042"
-        )
+        self.base_url = base_url or os.environ.get("ORTHANC_URL") or "http://localhost:8042"
         user = username if username is not None else os.environ.get("ORTHANC_USERNAME", "orthanc")
         pwd = password if password is not None else os.environ.get("ORTHANC_PASSWORD", "")
         auth = (user, pwd) if user else None
@@ -88,18 +84,14 @@ class OrthancBackend(PACSBackend):
         headers: Optional[Dict[str, str]] = None,
     ) -> httpx.Response:
         try:
-            r = self._client.post(
-                path, json=json_data, content=content, headers=headers
-            )
+            r = self._client.post(path, json=json_data, content=content, headers=headers)
         except httpx.ConnectError as e:
             raise PACSConnectionError(f"Cannot reach Orthanc: {e}") from e
         if r.status_code >= 400:
             raise PACSError(f"Orthanc HTTP {r.status_code}: {r.text[:200]}")
         return r
 
-    def _find(
-        self, level: str, query: Dict[str, str], limit: int = 1000
-    ) -> List[Dict[str, Any]]:
+    def _find(self, level: str, query: Dict[str, str], limit: int = 1000) -> List[Dict[str, Any]]:
         body = {"Level": level, "Query": query, "Expand": True, "Limit": int(limit)}
         r = self._post("/tools/find", json_data=body)
         return r.json()
@@ -145,9 +137,7 @@ class OrthancBackend(PACSBackend):
         query = {k: str(v) for k, v in filters.items() if v is not None}
         return [self._flatten_study(s) for s in self._find("Study", query, limit)]
 
-    def query_series(
-        self, study_uid: Optional[str] = None, **filters: Any
-    ) -> List[Dict[str, Any]]:
+    def query_series(self, study_uid: Optional[str] = None, **filters: Any) -> List[Dict[str, Any]]:
         limit = int(filters.pop("limit", 1000))
         query = {k: str(v) for k, v in filters.items() if v is not None}
         if study_uid:
@@ -174,14 +164,10 @@ class OrthancBackend(PACSBackend):
             limit=1,
         )
         if not rows:
-            raise PACSNotFoundError(
-                f"Series {series_uid} not found in study {study_uid}"
-            )
+            raise PACSNotFoundError(f"Series {series_uid} not found in study {study_uid}")
         return rows[0]["ID"]
 
-    def _resolve_instance_id(
-        self, study_uid: str, series_uid: str, sop_uid: str
-    ) -> str:
+    def _resolve_instance_id(self, study_uid: str, series_uid: str, sop_uid: str) -> str:
         rows = self._find(
             "Instance",
             {
@@ -209,9 +195,7 @@ class OrthancBackend(PACSBackend):
         out.write_bytes(r.content)
         return out
 
-    def fetch_series(
-        self, study_uid: str, series_uid: str, output_dir: Path
-    ) -> List[Path]:
+    def fetch_series(self, study_uid: str, series_uid: str, output_dir: Path) -> List[Path]:
         series_id = self._resolve_series_id(study_uid, series_uid)
         meta = self._get(f"/series/{series_id}").json()
         out_dir = Path(output_dir)
@@ -224,9 +208,7 @@ class OrthancBackend(PACSBackend):
             written.append(path)
         return written
 
-    def fetch_study(
-        self, study_uid: str, output_dir: Path
-    ) -> Dict[str, List[Path]]:
+    def fetch_study(self, study_uid: str, output_dir: Path) -> Dict[str, List[Path]]:
         studies = self._find("Study", {"StudyInstanceUID": study_uid}, limit=1)
         if not studies:
             raise PACSNotFoundError(f"Study {study_uid} not found")
@@ -234,10 +216,7 @@ class OrthancBackend(PACSBackend):
         out: Dict[str, List[Path]] = {}
         for sid in study_meta.get("Series", []):
             series_meta = self._get(f"/series/{sid}").json()
-            s_uid = (
-                series_meta.get("MainDicomTags", {}).get("SeriesInstanceUID")
-                or sid
-            )
+            s_uid = series_meta.get("MainDicomTags", {}).get("SeriesInstanceUID") or sid
             series_dir = Path(output_dir) / s_uid
             series_dir.mkdir(parents=True, exist_ok=True)
             for inst_id in series_meta.get("Instances", []):
@@ -297,9 +276,7 @@ class OrthancBackend(PACSBackend):
         ids = self._get(f"/queries/{query_id}/answers").json()
         answers: List[Dict[str, Any]] = []
         for ans_id in ids:
-            data = self._get(
-                f"/queries/{query_id}/answers/{ans_id}/content?simplify"
-            ).json()
+            data = self._get(f"/queries/{query_id}/answers/{ans_id}/content?simplify").json()
             answers.append(data)
         return answers
 
@@ -339,9 +316,7 @@ class OrthancBackend(PACSBackend):
         if not qid:
             raise PACSError(f"Orthanc returned no query id: {handle}")
         answers = self.query_answers(qid)
-        retrieve = self.retrieve_query(
-            qid, target_aet=target_aet, synchronous=synchronous
-        )
+        retrieve = self.retrieve_query(qid, target_aet=target_aet, synchronous=synchronous)
         return {"query_id": qid, "answers": answers, "retrieve": retrieve}
 
     # ------------------------------------------------------------------ changes feed

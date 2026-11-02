@@ -22,14 +22,15 @@ class ImageDiff:
     Geometry fields are exact comparisons (mismatch = True or non-zero).
     Pixel-array fields are computed only when geometry matches.
     """
+
     size_diff: bool = False
     spacing_max_abs: float = 0.0
     origin_max_abs: float = 0.0
     direction_max_abs: float = 0.0
     pixel_max_abs: float = 0.0
     pixel_mean_abs: float = 0.0
-    pixel_n_above_tol: int = 0          # count of voxels exceeding pixel_tol
-    pixel_total: int = 0                # total voxel count compared
+    pixel_n_above_tol: int = 0  # count of voxels exceeding pixel_tol
+    pixel_total: int = 0  # total voxel count compared
     note: str = ""
 
     @property
@@ -44,7 +45,8 @@ class ImageDiff:
 
 
 def compare_image_pair(
-    a, b,
+    a,
+    b,
     geom_tol: float = 0.0,
     pixel_tol: float = 1e-9,
 ) -> ImageDiff:
@@ -68,19 +70,23 @@ def compare_image_pair(
         diff.note = f"size {a.GetSize()} vs {b.GetSize()}"
         return diff
 
-    sa = np.asarray(a.GetSpacing()); sb = np.asarray(b.GetSpacing())
+    sa = np.asarray(a.GetSpacing())
+    sb = np.asarray(b.GetSpacing())
     diff.spacing_max_abs = float(np.max(np.abs(sa - sb)))
     if diff.spacing_max_abs > geom_tol:
         diff.note = f"spacing diff: {sa} vs {sb}"
 
-    oa = np.asarray(a.GetOrigin()); ob = np.asarray(b.GetOrigin())
+    oa = np.asarray(a.GetOrigin())
+    ob = np.asarray(b.GetOrigin())
     diff.origin_max_abs = float(np.max(np.abs(oa - ob)))
 
-    da = np.asarray(a.GetDirection()); db = np.asarray(b.GetDirection())
+    da = np.asarray(a.GetDirection())
+    db = np.asarray(b.GetDirection())
     diff.direction_max_abs = float(np.max(np.abs(da - db)))
 
     # Voxel-wise comparison (cast to float so int mask diffs are still numeric)
     import SimpleITK as sitk
+
     arr_a = sitk.GetArrayFromImage(a).astype(np.float64)
     arr_b = sitk.GetArrayFromImage(b).astype(np.float64)
     delta = np.abs(arr_a - arr_b)
@@ -102,10 +108,8 @@ def compare_image_pair_dict(
     Returns {"image": ImageDiff, "mask": ImageDiff}.
     """
     return {
-        "image": compare_image_pair(legacy[0], candidate[0],
-                                     geom_tol=geom_tol, pixel_tol=pixel_tol),
-        "mask":  compare_image_pair(legacy[1], candidate[1],
-                                     geom_tol=geom_tol, pixel_tol=pixel_tol),
+        "image": compare_image_pair(
+            legacy[0], candidate[0], geom_tol=geom_tol, pixel_tol=pixel_tol
+        ),
+        "mask": compare_image_pair(legacy[1], candidate[1], geom_tol=geom_tol, pixel_tol=pixel_tol),
     }
-
-

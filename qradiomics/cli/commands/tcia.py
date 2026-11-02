@@ -130,19 +130,27 @@ def _download_one(s: dict, out_root: Path, skip_existing: bool) -> dict:
     study = s.get("StudyInstanceUID", "study")
     series_dir = out_root / pid / study / uid
     if skip_existing and series_dir.exists() and any(series_dir.iterdir()):
-        return {"status": "cached", "pid": pid, "uid": uid,
-                "modality": s.get("Modality", "?")}
+        return {"status": "cached", "pid": pid, "uid": uid, "modality": s.get("Modality", "?")}
     series_dir.mkdir(parents=True, exist_ok=True)
     try:
         blob = _http_get_bytes(f"{NBIA_BASE}/getImage", params={"SeriesInstanceUID": uid})
         with zipfile.ZipFile(io.BytesIO(blob)) as zf:
             zf.extractall(series_dir)
-        return {"status": "ok", "pid": pid, "uid": uid,
-                "modality": s.get("Modality", "?"),
-                "bytes": len(blob)}
+        return {
+            "status": "ok",
+            "pid": pid,
+            "uid": uid,
+            "modality": s.get("Modality", "?"),
+            "bytes": len(blob),
+        }
     except Exception as e:
-        return {"status": "failed", "pid": pid, "uid": uid,
-                "modality": s.get("Modality", "?"), "error": str(e)}
+        return {
+            "status": "failed",
+            "pid": pid,
+            "uid": uid,
+            "modality": s.get("Modality", "?"),
+            "error": str(e),
+        }
 
 
 @tcia.command("download")
@@ -176,17 +184,18 @@ def _download_one(s: dict, out_root: Path, skip_existing: bool) -> dict:
     "-j",
     default=8,
     help="Parallel download workers (default 8). I/O-bound, so a higher number "
-         "than CPU count is fine; TCIA's public NBIA tolerates ~16 concurrent.",
+    "than CPU count is fine; TCIA's public NBIA tolerates ~16 concurrent.",
 )
 @click.option(
     "--progress/--no-progress",
     default=True,
     help="Show a rich progress bar (default on). Falls back to line output if "
-         "rich isn't installed.",
+    "rich isn't installed.",
 )
 @click.option("--skip-existing/--no-skip-existing", default=True)
-def download_cmd(collection, series, manifest, modality, output, max_series,
-                 workers, progress, skip_existing):
+def download_cmd(
+    collection, series, manifest, modality, output, max_series, workers, progress, skip_existing
+):
     """Download DICOM series from TCIA into a per-patient directory tree.
 
     \b
@@ -225,8 +234,10 @@ def download_cmd(collection, series, manifest, modality, output, max_series,
         todo = todo[:max_series]
 
     total = len(todo)
-    click.echo(f"Will download {total} series → {out_root}  (workers={workers}, "
-               f"skip_existing={skip_existing})")
+    click.echo(
+        f"Will download {total} series → {out_root}  (workers={workers}, "
+        f"skip_existing={skip_existing})"
+    )
 
     import sys
 
@@ -240,10 +251,16 @@ def download_cmd(collection, series, manifest, modality, output, max_series,
     if use_rich:
         try:
             from rich.progress import (
-                BarColumn, MofNCompleteColumn, Progress, SpinnerColumn,
-                TextColumn, TimeElapsedColumn, TimeRemainingColumn,
+                BarColumn,
+                MofNCompleteColumn,
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+                TimeElapsedColumn,
+                TimeRemainingColumn,
                 DownloadColumn,
             )
+
             rich_bar = Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -278,7 +295,8 @@ def download_cmd(collection, series, manifest, modality, output, max_series,
                     else:
                         counts["failed"] += 1
                     rich_bar.update(
-                        tid, advance=1,
+                        tid,
+                        advance=1,
                         description=(
                             f"[cyan]{r.get('pid','?')[:18]:<18}[/cyan] "
                             f"({r.get('modality','?')})"
@@ -292,10 +310,12 @@ def download_cmd(collection, series, manifest, modality, output, max_series,
             futs = {ex.submit(_download_one, s, out_root, skip_existing): s for s in todo}
             n = 0
             for fut in as_completed(futs):
-                r = fut.result(); n += 1
+                r = fut.result()
+                n += 1
                 status = r["status"]
                 if status == "ok":
-                    counts["ok"] += 1; counts["bytes"] += r.get("bytes", 0)
+                    counts["ok"] += 1
+                    counts["bytes"] += r.get("bytes", 0)
                 elif status == "cached":
                     counts["cached"] += 1
                 else:
@@ -346,7 +366,9 @@ def clinical_cmd(collection, output):
         fields = sorted({k for row in data for k in row.keys()})
         # Map TCIA's PatientID to qradiomics' lowercase patient_id
         with open(out, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=["patient_id"] + [k for k in fields if k != "PatientID"])
+            w = csv.DictWriter(
+                f, fieldnames=["patient_id"] + [k for k in fields if k != "PatientID"]
+            )
             w.writeheader()
             for row in data:
                 row_out = {"patient_id": row.get("PatientID")}
@@ -364,19 +386,39 @@ def clinical_cmd(collection, output):
 
 
 @tcia.command("manifest")
-@click.option("--series", "series_csv", required=True, type=click.Path(exists=True),
-              help="series.csv from `qr tcia series` (rows = (PatientID, StudyInstanceUID, "
-                   "SeriesInstanceUID, Modality, …))")
-@click.option("--dicom-root", required=True, type=click.Path(exists=True, file_okay=False),
-              help="Root of the downloaded DICOM tree "
-                   "(<root>/<PatientID>/<StudyUID>/<SeriesUID>/*.dcm)")
-@click.option("--image-modality", default="CT", show_default=True,
-              help="Modality of the image series to include in the manifest "
-                   "(CT, PT, MR, …)")
-@click.option("--mask-modality", default="RTSTRUCT", show_default=True,
-              help="Modality of the mask/RTSTRUCT series (RTSTRUCT, SEG)")
-@click.option("--output", "-o", required=True, type=click.Path(),
-              help="Output manifest CSV (patient_id, modality, image_path, mask_path)")
+@click.option(
+    "--series",
+    "series_csv",
+    required=True,
+    type=click.Path(exists=True),
+    help="series.csv from `qr tcia series` (rows = (PatientID, StudyInstanceUID, "
+    "SeriesInstanceUID, Modality, …))",
+)
+@click.option(
+    "--dicom-root",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Root of the downloaded DICOM tree " "(<root>/<PatientID>/<StudyUID>/<SeriesUID>/*.dcm)",
+)
+@click.option(
+    "--image-modality",
+    default="CT",
+    show_default=True,
+    help="Modality of the image series to include in the manifest " "(CT, PT, MR, …)",
+)
+@click.option(
+    "--mask-modality",
+    default="RTSTRUCT",
+    show_default=True,
+    help="Modality of the mask/RTSTRUCT series (RTSTRUCT, SEG)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output manifest CSV (patient_id, modality, image_path, mask_path)",
+)
 def manifest_cmd(series_csv, dicom_root, image_modality, mask_modality, output):
     """Build a (patient_id, modality, image_path, mask_path) manifest from a
     TCIA `series.csv` plus the matching on-disk DICOM tree.

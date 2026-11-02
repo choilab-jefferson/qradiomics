@@ -1,0 +1,15 @@
+# PET params: ORIGINAL features only (no wavelet/LoG/LBP)
+# ≈ 110 features per extraction. Measured ~31 min → ~2 s per case vs pet_default.yaml.
+# Use for cohort-scale screening; switch back to pet_default.yaml for final reproduction.
+#
+# binWidth 0.25 is the SUV setting; note normalize must stay false — normalizing SUV
+# discards the physiological calibration the bin width is chosen against.
+
+imageType:
+  Original: {}
+
+setting:
+  normalize: false
+  binWidth: 0.25
+  geometryTolerance: 1.0e-3
+  correctMask: true

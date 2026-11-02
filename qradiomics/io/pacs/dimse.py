@@ -27,22 +27,22 @@ logger = logging.getLogger(__name__)
 # AllStoragePresentationContexts entry — keep this list narrow but cover the
 # modalities qradiomics actually reads.
 _CGET_STORAGE_SOP_CLASSES: Tuple[str, ...] = (
-    "1.2.840.10008.5.1.4.1.1.2",        # CT Image Storage
-    "1.2.840.10008.5.1.4.1.1.2.1",      # Enhanced CT Image Storage
-    "1.2.840.10008.5.1.4.1.1.4",        # MR Image Storage
-    "1.2.840.10008.5.1.4.1.1.4.1",      # Enhanced MR Image Storage
-    "1.2.840.10008.5.1.4.1.1.128",      # PET Image Storage
-    "1.2.840.10008.5.1.4.1.1.130",      # Enhanced PET Image Storage
-    "1.2.840.10008.5.1.4.1.1.481.1",    # RT Image Storage
-    "1.2.840.10008.5.1.4.1.1.481.2",    # RT Dose Storage
-    "1.2.840.10008.5.1.4.1.1.481.3",    # RT Structure Set Storage
-    "1.2.840.10008.5.1.4.1.1.481.5",    # RT Plan Storage
-    "1.2.840.10008.5.1.4.1.1.481.8",    # RT Ion Plan Storage
-    "1.2.840.10008.5.1.4.1.1.481.9",    # RT Treatment Summary Record Storage
-    "1.2.840.10008.5.1.4.1.1.66.4",     # Segmentation Storage
-    "1.2.840.10008.5.1.4.1.1.7",        # Secondary Capture Image Storage
-    "1.2.840.10008.5.1.4.1.1.88.33",    # Comprehensive SR
-    "1.2.840.10008.5.1.4.1.1.88.11",    # Basic Text SR
+    "1.2.840.10008.5.1.4.1.1.2",  # CT Image Storage
+    "1.2.840.10008.5.1.4.1.1.2.1",  # Enhanced CT Image Storage
+    "1.2.840.10008.5.1.4.1.1.4",  # MR Image Storage
+    "1.2.840.10008.5.1.4.1.1.4.1",  # Enhanced MR Image Storage
+    "1.2.840.10008.5.1.4.1.1.128",  # PET Image Storage
+    "1.2.840.10008.5.1.4.1.1.130",  # Enhanced PET Image Storage
+    "1.2.840.10008.5.1.4.1.1.481.1",  # RT Image Storage
+    "1.2.840.10008.5.1.4.1.1.481.2",  # RT Dose Storage
+    "1.2.840.10008.5.1.4.1.1.481.3",  # RT Structure Set Storage
+    "1.2.840.10008.5.1.4.1.1.481.5",  # RT Plan Storage
+    "1.2.840.10008.5.1.4.1.1.481.8",  # RT Ion Plan Storage
+    "1.2.840.10008.5.1.4.1.1.481.9",  # RT Treatment Summary Record Storage
+    "1.2.840.10008.5.1.4.1.1.66.4",  # Segmentation Storage
+    "1.2.840.10008.5.1.4.1.1.7",  # Secondary Capture Image Storage
+    "1.2.840.10008.5.1.4.1.1.88.33",  # Comprehensive SR
+    "1.2.840.10008.5.1.4.1.1.88.11",  # Basic Text SR
 )
 
 
@@ -110,13 +110,10 @@ class DIMSEBackend(PACSBackend):
             import pydicom  # noqa: F401
         except ImportError as e:
             raise PACSUnsupportedError(
-                "DIMSE backend requires the 'pynetdicom' package "
-                "(pip install pynetdicom)."
+                "DIMSE backend requires the 'pynetdicom' package " "(pip install pynetdicom)."
             ) from e
         if not (host and port and aet):
-            raise ValueError(
-                "DIMSEBackend: 'host', 'port', and 'aet' are all required"
-            )
+            raise ValueError("DIMSEBackend: 'host', 'port', and 'aet' are all required")
         self.name = name
         self.host = host
         self.port = int(port)
@@ -141,9 +138,7 @@ class DIMSEBackend(PACSBackend):
             kwargs["evt_handlers"] = evt_handlers
         assoc = ae.associate(self.host, self.port, **kwargs)
         if not assoc.is_established:
-            raise PACSConnectionError(
-                f"DIMSE association rejected by {self.host}:{self.port}"
-            )
+            raise PACSConnectionError(f"DIMSE association rejected by {self.host}:{self.port}")
         return assoc
 
     @staticmethod
@@ -174,9 +169,7 @@ class DIMSEBackend(PACSBackend):
 
     # ------------------------------------------------------------------ C-FIND
 
-    def _c_find(
-        self, level: str, filters: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+    def _c_find(self, level: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         from pynetdicom.sop_class import (
             PatientRootQueryRetrieveInformationModelFind,
         )
@@ -232,9 +225,7 @@ class DIMSEBackend(PACSBackend):
     def query_studies(self, **filters: Any) -> List[Dict[str, Any]]:
         return self._c_find("STUDY", filters)
 
-    def query_series(
-        self, study_uid: Optional[str] = None, **filters: Any
-    ) -> List[Dict[str, Any]]:
+    def query_series(self, study_uid: Optional[str] = None, **filters: Any) -> List[Dict[str, Any]]:
         if study_uid:
             filters["StudyInstanceUID"] = study_uid
         return self._c_find("SERIES", filters)
@@ -286,9 +277,7 @@ class DIMSEBackend(PACSBackend):
             evt_handlers=[(evt.EVT_C_STORE, on_store)],
         )
         if not assoc.is_established:
-            raise PACSConnectionError(
-                f"DIMSE association rejected by {self.host}:{self.port}"
-            )
+            raise PACSConnectionError(f"DIMSE association rejected by {self.host}:{self.port}")
         try:
             for status, _ in assoc.send_c_get(
                 query_ds,
@@ -300,9 +289,7 @@ class DIMSEBackend(PACSBackend):
             assoc.release()
         return stored
 
-    def fetch_series(
-        self, study_uid: str, series_uid: str, output_dir: Path
-    ) -> List[Path]:
+    def fetch_series(self, study_uid: str, series_uid: str, output_dir: Path) -> List[Path]:
         import pydicom
 
         ds = pydicom.Dataset()
@@ -340,17 +327,13 @@ class DIMSEBackend(PACSBackend):
             return out_path
         raise PACSNotFoundError(f"Instance {sop_instance_uid} not retrieved")
 
-    def fetch_study(
-        self, study_uid: str, output_dir: Path
-    ) -> Dict[str, List[Path]]:
+    def fetch_study(self, study_uid: str, output_dir: Path) -> Dict[str, List[Path]]:
         out: Dict[str, List[Path]] = {}
         for row in self.query_series(study_uid=study_uid):
             s_uid = row.get("SeriesInstanceUID")
             if not s_uid:
                 continue
-            out[s_uid] = self.fetch_series(
-                study_uid, s_uid, Path(output_dir) / s_uid
-            )
+            out[s_uid] = self.fetch_series(study_uid, s_uid, Path(output_dir) / s_uid)
         return out
 
     # ------------------------------------------------------------------ C-STORE

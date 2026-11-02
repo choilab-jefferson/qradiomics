@@ -24,7 +24,9 @@ def test_affine_seeded_from_centered_initializer():
     fixed = _blob((0.0, 0.0, 0.0))
     moving = _blob((5.0, 2.0, 1.0))
     euler = sitk.CenteredTransformInitializer(
-        fixed, moving, sitk.Euler3DTransform(),
+        fixed,
+        moving,
+        sitk.Euler3DTransform(),
         sitk.CenteredTransformInitializerFilter.GEOMETRY,
     )
     aff = _init_transform(fixed, moving, "affine")

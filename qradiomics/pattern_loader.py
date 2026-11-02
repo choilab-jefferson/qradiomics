@@ -1,7 +1,7 @@
 """
 PatternLoader: Loads and validates normalized pattern templates.
 
-Loads pattern templates from backend/patterns/templates/ and provides:
+Loads pattern templates from qradiomics/data/templates/ and provides:
 - Pattern validation against schema
 - Pattern merging with overrides
 - Pattern compatibility checking with datasets
@@ -14,7 +14,7 @@ Architecture:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
 from pydantic import BaseModel, Field
@@ -78,7 +78,8 @@ class DeltaFeatureConfig(BaseModel):
 class FeatureExtractionConfig(BaseModel):
     """Feature extraction configuration."""
 
-    extractor: str = "pyradiomics"
+    # One engine name, a comma-list ("pyradiomics,pysera"), or a list of names.
+    extractor: Union[str, List[str]] = "pyradiomics"
     # Path to extractor config; either a single file or a per-modality mapping
     # like {"CT": "pyradiomics/ct_default.yaml"}.
     config_ref: Optional[Union[str, Dict[str, str]]] = None
@@ -90,6 +91,23 @@ class FeatureExtractionConfig(BaseModel):
     delta_features: Optional[DeltaFeatureConfig] = None
     quality_control: Optional[Dict[str, Any]] = None
     multi_roi: Optional[Dict[str, Any]] = None
+
+    @property
+    def engines(self) -> Tuple[str, ...]:
+        """Normalized, de-duplicated engine names (order preserved)."""
+        raw = [self.extractor] if isinstance(self.extractor, str) else list(self.extractor)
+        names: List[str] = []
+        for item in raw:
+            for name in str(item).split(","):
+                name = name.strip()
+                if name and name not in names:
+                    names.append(name)
+        return tuple(names) or ("pyradiomics",)
+
+    @property
+    def engine_spec(self) -> str:
+        """Comma-joined engines, as accepted by ``qr extract --engine``."""
+        return ",".join(self.engines)
 
 
 class FeatureSelectionConfig(BaseModel):

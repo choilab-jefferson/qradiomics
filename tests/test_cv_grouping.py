@@ -34,13 +34,15 @@ def _leaky_dataset(n_patients=20, per_patient=4, seed=0):
         label = p % 2
         offset = rng.normal(label * 3.0, 0.1)  # near patient-identifying
         for _ in range(per_patient):
-            rows.append({
-                "pid": f"P{p}",
-                "y": label,
-                "f1": offset + rng.normal(0, 0.05),
-                "f2": rng.normal(0, 1),
-                "f3": rng.normal(0, 1),
-            })
+            rows.append(
+                {
+                    "pid": f"P{p}",
+                    "y": label,
+                    "f1": offset + rng.normal(0, 0.05),
+                    "f2": rng.normal(0, 1),
+                    "f3": rng.normal(0, 1),
+                }
+            )
     return pd.DataFrame(rows)
 
 

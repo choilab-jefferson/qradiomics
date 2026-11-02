@@ -32,8 +32,8 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from pipelines.common.engine_extract import extract_features_multi
 from pipelines.common.parallel import run_parallel_rows
-from qradiomics.atomic import extract_features
 from qradiomics.shape import spiculation_from_voxel
 
 
@@ -64,7 +64,7 @@ def _walk_lungx(root: Path):
 
 
 def _process_one(args) -> dict:
-    pid, n, ct_path, mask_path, malignancy, y_malig, diagnosis, do_spic = args
+    pid, n, ct_path, mask_path, malignancy, y_malig, diagnosis, do_spic, engine = args
     row = {"pid": pid, "nodule_id": f"Nodule {n}",
            "malignancy": malignancy, "y_malignant": int(y_malig),
            "diagnosis": diagnosis}
@@ -84,7 +84,7 @@ def _process_one(args) -> dict:
         bin_mk.CopyInformation(ct)
 
         try:
-            feats = extract_features(ct, bin_mk, label=1, geometry_tolerance=1e-3)
+            feats = extract_features_multi(ct, bin_mk, engine=engine, label=1, geometry_tolerance=1e-3)
             for k, v in feats.items(): row[k] = v
             row["status_radiomics"] = "ok"
         except Exception as e:
@@ -154,6 +154,10 @@ def main() -> int:
     p.add_argument("--lungx-cal-xlsx", help="LUNGx CalibrationSet xlsx")
     p.add_argument("--lungx-test-xlsx", help="LUNGx TestSet xlsx")
     p.add_argument("--skip-spiculation", action="store_true")
+    p.add_argument("--engine", default=None,
+                   help="Extraction engine(s): pyradiomics (default), pysera, "
+                        "rtools, a comma-list, or 'all'. Omit for unchanged "
+                        "PyRadiomics-only behaviour.")
     p.add_argument("--jobs", "-j", type=int, default=16)
     p.add_argument("--limit", type=int, default=None)
     args = p.parse_args()
@@ -183,7 +187,7 @@ def main() -> int:
             malignancy = 5 if y_malig else 1
         work.append((pid, n, str(ct), str(mk),
                      float(malignancy), y_malig, diag,
-                     not args.skip_spiculation))
+                     not args.skip_spiculation, args.engine))
     if args.limit: work = work[: args.limit]
     print(f"{len(work)} (pid, nodule) tasks for {args.cohort}", file=sys.stderr)
 

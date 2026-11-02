@@ -59,7 +59,11 @@ from typing import Iterable
 import numpy as np
 
 from .mesh_utils import (
-    Mesh, voxel_to_mesh, vertex_areas, face_areas, vertex_normals,
+    Mesh,
+    voxel_to_mesh,
+    vertex_areas,
+    face_areas,
+    vertex_normals,
     vertex_adjacency,
 )
 
@@ -68,8 +72,8 @@ from .mesh_utils import (
 # Spherical parameterization (approximate conformal)
 # =====================================================================
 
-def spherical_parameterization(mesh: Mesh, n_iter: int = 200,
-                                 step: float = 0.1) -> np.ndarray:
+
+def spherical_parameterization(mesh: Mesh, n_iter: int = 200, step: float = 0.1) -> np.ndarray:
     """Approximate conformal sphere mapping for a genus-0 mesh.
 
     Returns:
@@ -114,6 +118,7 @@ def spherical_parameterization(mesh: Mesh, n_iter: int = 200,
 # Per-vertex area distortion (paper §2.3 step 2)
 # =====================================================================
 
+
 def area_distortion(mesh: Mesh, sphere_pos: np.ndarray) -> np.ndarray:
     """Per-vertex log(A_sphere / A_original).
 
@@ -134,20 +139,21 @@ def area_distortion(mesh: Mesh, sphere_pos: np.ndarray) -> np.ndarray:
 # Peak (spike) detection — paper Algorithm 1
 # =====================================================================
 
+
 @dataclass(frozen=True)
 class Peak:
-    apex: int                       # vertex index of local min Δarea
-    members: np.ndarray             # vertex indices belonging to peak (np.int64)
-    height: float                   # peak height (sum of centroid steps)
-    width: float                    # FWHM-style width
-    mean_distortion: float          # mean Δarea over members
-    var_distortion: float           # variance Δarea over members
-    solid_angle: float              # approx solid angle subtended (sr)
+    apex: int  # vertex index of local min Δarea
+    members: np.ndarray  # vertex indices belonging to peak (np.int64)
+    height: float  # peak height (sum of centroid steps)
+    width: float  # FWHM-style width
+    mean_distortion: float  # mean Δarea over members
+    var_distortion: float  # variance Δarea over members
+    solid_angle: float  # approx solid angle subtended (sr)
 
 
-def detect_peaks(mesh: Mesh, distortion: np.ndarray,
-                  baseline_eps: float = 0.01,
-                  min_peak_size: int = 5) -> list[Peak]:
+def detect_peaks(
+    mesh: Mesh, distortion: np.ndarray, baseline_eps: float = 0.01, min_peak_size: int = 5
+) -> list[Peak]:
     """Detect spike peaks from area-distortion map.
 
     Algorithm:
@@ -199,10 +205,12 @@ def detect_peaks(mesh: Mesh, distortion: np.ndarray,
                 members.append(v)
                 assigned[v] = True
                 for n in adj[v]:
-                    if (n not in seen
-                            and not assigned[n]
-                            and distortion[n] < -baseline_eps
-                            and distortion[n] > distortion[v] - 1e-6):
+                    if (
+                        n not in seen
+                        and not assigned[n]
+                        and distortion[n] < -baseline_eps
+                        and distortion[n] > distortion[v] - 1e-6
+                    ):
                         next_level.append(n)
                         seen.add(n)
             if next_level:
@@ -229,17 +237,22 @@ def detect_peaks(mesh: Mesh, distortion: np.ndarray,
         width = 2.0 * float(np.linalg.norm(pts - center, axis=1).mean())
         # Solid angle ≈ (peak_area / (height^2)) — small angle = sharp spike
         peak_area = float(vertex_areas(mesh)[members_arr].sum())
-        h2 = max(height ** 2, 1e-6)
+        h2 = max(height**2, 1e-6)
         solid_angle = peak_area / h2
 
         mean_d = float(distortion[members_arr].mean())
         var_d = float(distortion[members_arr].var())
-        peaks.append(Peak(
-            apex=int(apex), members=members_arr,
-            height=height, width=width,
-            mean_distortion=mean_d, var_distortion=var_d,
-            solid_angle=solid_angle,
-        ))
+        peaks.append(
+            Peak(
+                apex=int(apex),
+                members=members_arr,
+                height=height,
+                width=width,
+                mean_distortion=mean_d,
+                var_distortion=var_d,
+                solid_angle=solid_angle,
+            )
+        )
     return peaks
 
 
@@ -247,15 +260,18 @@ def detect_peaks(mesh: Mesh, distortion: np.ndarray,
 # Peak classification: spiculation / lobulation / attachment
 # =====================================================================
 
+
 @dataclass(frozen=True)
 class ClassifyConfig:
     """Thresholds from the paper (validated on FDA phantom data, §3.1)."""
-    height_min: float = 0.27         # h_t  — paper §3.1
-    solid_angle_max: float = 0.46    # ω_t in steradians — paper §3.1
+
+    height_min: float = 0.27  # h_t  — paper §3.1
+    solid_angle_max: float = 0.46  # ω_t in steradians — paper §3.1
 
 
-def classify_peak(peak: Peak, cfg: ClassifyConfig | None = None,
-                   attachment_mask: np.ndarray | None = None) -> str:
+def classify_peak(
+    peak: Peak, cfg: ClassifyConfig | None = None, attachment_mask: np.ndarray | None = None
+) -> str:
     """One peak → class label.
 
     Classes:
@@ -278,29 +294,35 @@ def classify_peak(peak: Peak, cfg: ClassifyConfig | None = None,
 # Interpretable spiculation features (paper §2.3)
 # =====================================================================
 
+
 @dataclass(frozen=True)
 class SpiculationFeatures:
     """The paper's interpretable feature set."""
-    Np: int            # number of all peaks
-    Na: int            # number of spiculations
-    Nl: int            # number of lobulations
-    Na_att: int        # number of attached peaks
-    s1: float          # sharpness score
-    s2: float          # irregularity score
+
+    Np: int  # number of all peaks
+    Na: int  # number of spiculations
+    Nl: int  # number of lobulations
+    Na_att: int  # number of attached peaks
+    s1: float  # sharpness score
+    s2: float  # irregularity score
     classes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, float]:
         return {
-            "Np": float(self.Np), "Na": float(self.Na),
-            "Nl": float(self.Nl), "Na_att": float(self.Na_att),
-            "s1": float(self.s1), "s2": float(self.s2),
+            "Np": float(self.Np),
+            "Na": float(self.Na),
+            "Nl": float(self.Nl),
+            "Na_att": float(self.Na_att),
+            "s1": float(self.s1),
+            "s2": float(self.s2),
         }
 
 
-def spiculation_features(peaks: list[Peak],
-                          cfg: ClassifyConfig | None = None,
-                          attachment_mask: np.ndarray | None = None,
-                          ) -> SpiculationFeatures:
+def spiculation_features(
+    peaks: list[Peak],
+    cfg: ClassifyConfig | None = None,
+    attachment_mask: np.ndarray | None = None,
+) -> SpiculationFeatures:
     """Compute interpretable spiculation feature set.
 
     s1 = Σ_i (mean Δarea_i × height_i) / Σ_i height_i        (sharpness)
@@ -314,8 +336,13 @@ def spiculation_features(peaks: list[Peak],
     s1 = sum(p.mean_distortion * p.height for p in peaks) / h_total
     s2 = sum(p.var_distortion * p.height for p in peaks) / h_total
     return SpiculationFeatures(
-        Np=len(peaks), Na=n_spic, Nl=n_lob, Na_att=n_att,
-        s1=float(s1), s2=float(s2), classes=classes,
+        Np=len(peaks),
+        Na=n_spic,
+        Nl=n_lob,
+        Na_att=n_att,
+        s1=float(s1),
+        s2=float(s2),
+        classes=classes,
     )
 
 
@@ -323,12 +350,14 @@ def spiculation_features(peaks: list[Peak],
 # End-to-end voxel → features pipeline
 # =====================================================================
 
-def spiculation_from_voxel(mask: np.ndarray,
-                              attachment_mask: np.ndarray | None = None,
-                              n_param_iter: int = 200,
-                              cfg: ClassifyConfig | None = None,
-                              spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
-                              ) -> tuple[SpiculationFeatures, list[Peak], np.ndarray, Mesh]:
+
+def spiculation_from_voxel(
+    mask: np.ndarray,
+    attachment_mask: np.ndarray | None = None,
+    n_param_iter: int = 200,
+    cfg: ClassifyConfig | None = None,
+    spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> tuple[SpiculationFeatures, list[Peak], np.ndarray, Mesh]:
     """One-shot pipeline: voxel mask → spiculation features.
 
     Args:
@@ -361,8 +390,8 @@ def spiculation_from_voxel(mask: np.ndarray,
 # Bridge: spiculation peaks → mesh-domain surface-lets
 # =====================================================================
 
-def peaks_to_surfacelets(mesh: Mesh, peaks: list[Peak],
-                           classes: Iterable[str] | None = None):
+
+def peaks_to_surfacelets(mesh: Mesh, peaks: list[Peak], classes: Iterable[str] | None = None):
     """Each peak apex becomes a mesh-domain surface-let atom.
 
     Returns a list of `Surfacelet` (from qradiomics_private.shape.surfacelet) using
@@ -387,13 +416,17 @@ def peaks_to_surfacelets(mesh: Mesh, peaks: list[Peak],
         v = peak.apex
         pos = mesh.vertices[v]
         n = vn[v]
-        out.append(Surfacelet(
-            z=int(round(float(pos[0]))),
-            y=int(round(float(pos[1]))),
-            x=int(round(float(pos[2]))),
-            nz=float(n[0]), ny=float(n[1]), nx=float(n[2]),
-            saliency=float(-peak.mean_distortion),    # spikes have most-negative Δarea
-            scale=float(peak.height),
-            cls=cls,
-        ))
+        out.append(
+            Surfacelet(
+                z=int(round(float(pos[0]))),
+                y=int(round(float(pos[1]))),
+                x=int(round(float(pos[2]))),
+                nz=float(n[0]),
+                ny=float(n[1]),
+                nx=float(n[2]),
+                saliency=float(-peak.mean_distortion),  # spikes have most-negative Δarea
+                scale=float(peak.height),
+                cls=cls,
+            )
+        )
     return out

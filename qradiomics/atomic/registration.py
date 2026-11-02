@@ -40,7 +40,7 @@ def register_pair(
     smoothing_sigmas: Tuple[float, ...] = (2.0, 1.0, 0.0),
     interpolator: int = sitk.sitkLinear,
     default_pixel_value: float = 0.0,
-    seed: int = 12345,
+    seed: int = 42,
 ) -> Tuple[sitk.Transform, sitk.Image]:
     """Register ``moving`` onto ``fixed`` and return ``(transform, warped_moving)``.
 
@@ -87,7 +87,9 @@ def register_pair(
     else:
         raise ValueError(f"Unknown metric {metric!r}; expected 'mattes' or 'correlation'.")
     method.SetMetricSamplingStrategy(method.RANDOM)
-    method.SetMetricSamplingPercentage(float(sampling_percentage), seed=seed)
+    # SimpleITK treats seed=0 as sitkWallClock (non-deterministic wall-clock seeding).
+    effective_seed = 42 if seed == 0 else int(seed)
+    method.SetMetricSamplingPercentage(float(sampling_percentage), seed=effective_seed)
     method.SetInterpolator(sitk.sitkLinear)
     method.SetOptimizerAsRegularStepGradientDescent(
         learningRate=float(learning_rate),
@@ -134,9 +136,7 @@ def resample_to_fixed(
         tx = sitk.ReadTransform(transform)
     else:
         tx = transform
-    return sitk.Resample(
-        moving, fixed, tx, interpolator, default_pixel_value, moving.GetPixelID()
-    )
+    return sitk.Resample(moving, fixed, tx, interpolator, default_pixel_value, moving.GetPixelID())
 
 
 def _init_transform(

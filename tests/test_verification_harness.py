@@ -72,25 +72,37 @@ def test_run_ab_sweep_self_pair_is_zero_diff(tmp_path):
 
     # Build a tiny manifest in-memory
     cases = [
-        ("HeartB10", "HeartB10_planCT_cropped-1mm.nrrd",
-                      "HeartB10_planCT_manual_cropped-1mm-label.nrrd"),
-        ("HeartB14", "HeartB14_planCT_cropped-1mm.nrrd",
-                      "HeartB14_planCT_manual_cropped-1mm-label.nrrd"),
+        (
+            "HeartB10",
+            "HeartB10_planCT_cropped-1mm.nrrd",
+            "HeartB10_planCT_manual_cropped-1mm-label.nrrd",
+        ),
+        (
+            "HeartB14",
+            "HeartB14_planCT_cropped-1mm.nrrd",
+            "HeartB14_planCT_manual_cropped-1mm-label.nrrd",
+        ),
     ]
     manifest = tmp_path / "m.csv"
-    manifest.write_text("patient_id,image_path,mask_path\n" + "\n".join(
-        f"{pid},{_HEARTCB}/{pid}/{img},{_HEARTCB}/{pid}/{msk}"
-        for pid, img, msk in cases
-    ) + "\n")
+    manifest.write_text(
+        "patient_id,image_path,mask_path\n"
+        + "\n".join(
+            f"{pid},{_HEARTCB}/{pid}/{img},{_HEARTCB}/{pid}/{msk}" for pid, img, msk in cases
+        )
+        + "\n"
+    )
 
     def extract(img_path, msk_path):
         img, msk = load_image_and_mask(img_path, msk_path)
         return extract_features(img, msk)
 
     result = run_ab_sweep(
-        manifest, FeatureExtractor("ref", extract),
+        manifest,
+        FeatureExtractor("ref", extract),
         FeatureExtractor("cand", extract),
-        tmp_path / "out", abs_tol=1e-9, rel_tol=1e-9,
+        tmp_path / "out",
+        abs_tol=1e-9,
+        rel_tol=1e-9,
     )
     assert result.n_cases == 2
     assert result.n_success == 2

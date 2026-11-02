@@ -155,7 +155,8 @@ class RadiomicsExtractor:
                     mask_path = row.get("mask_path") or ""
                     if not mask_path or mask_path.strip() == "":
                         logger.warning(
-                            "Skipping %s: no mask provided", patient_id,
+                            "Skipping %s: no mask provided",
+                            patient_id,
                         )
                         patients_skipped += 1
                         continue
@@ -170,7 +171,8 @@ class RadiomicsExtractor:
                         patients_processed += 1
                         logger.info(
                             "Extracted %d features for %s",
-                            len(feature_dict) - 1, patient_id,
+                            len(feature_dict) - 1,
+                            patient_id,
                         )
                     except BrokenProcessPool:
                         # A worker killed mid-extraction (commonly the OS OOM
@@ -310,8 +312,9 @@ def _extract_one_worker(patient_id: str, image_path: str, mask_path: str) -> Dic
     return _extract_one(_WORKER_EXTRACTOR, patient_id, image_path, mask_path)
 
 
-def _extract_one(extractor: Any, patient_id: Optional[str], image_path: Optional[str],
-                 mask_path: Optional[str]) -> Dict[str, Any]:
+def _extract_one(
+    extractor: Any, patient_id: Optional[str], image_path: Optional[str], mask_path: Optional[str]
+) -> Dict[str, Any]:
     """Run PyRadiomics on one (image, mask) pair and shape the row."""
     features = extractor.execute(image_path, mask_path)
     feature_dict: Dict[str, Any] = {"patient_id": patient_id}

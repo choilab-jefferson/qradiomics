@@ -136,8 +136,13 @@ feature_extraction:
     - ngtdm
 
   settings:
-    normalize: true
-    normalizeScale: 100
+    # normalize stays false. This is a CT-oriented template and CT is already in
+    # calibrated Hounsfield units; z-scoring to std ~1 makes binWidth 25 collapse the
+    # whole ROI into ~1 bin and every texture feature degenerates (Entropy ~= 0).
+    # Was `normalize: true` + `normalizeScale: 100`; corrected to match the JeffLuRa
+    # canonical fix 02e4e3af (2026-03-18). normalizeScale is dropped because it is
+    # meaningless while normalize is false.
+    normalize: false
     binWidth: 25
 
   quality_control:

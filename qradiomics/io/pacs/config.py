@@ -112,8 +112,7 @@ def load_profiles(
     raw = _read_raw(path)
     profiles_raw = raw.get("profiles") or {}
     return {
-        name: PACSProfile.from_dict(name, _expand_env(cfg))
-        for name, cfg in profiles_raw.items()
+        name: PACSProfile.from_dict(name, _expand_env(cfg)) for name, cfg in profiles_raw.items()
     }
 
 
@@ -136,7 +135,5 @@ def load_profile(
         else:
             name = next(iter(profiles))
     if name not in profiles:
-        raise KeyError(
-            f"Unknown PACS profile '{name}'. Available: {sorted(profiles)}"
-        )
+        raise KeyError(f"Unknown PACS profile '{name}'. Available: {sorted(profiles)}")
     return profiles[name]

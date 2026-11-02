@@ -22,16 +22,29 @@ def lidc():
 
 
 @lidc.command("convert")
-@click.option("--dicom-dir", "-d", required=True,
-              type=click.Path(exists=True, file_okay=False),
-              help="LIDC CT series directory.")
-@click.option("--xml", "xml_path",
-              type=click.Path(exists=True, dir_okay=False),
-              default=None, help="Matching LIDC annotation XML (omit to skip masks).")
-@click.option("--output", "-o", "out_dir", required=True, type=click.Path(),
-              help="Output directory for the CT NRRD + mask NRRDs + nodules.csv.")
-@click.option("--pid", required=True,
-              help="Patient identifier used as the filename prefix.")
+@click.option(
+    "--dicom-dir",
+    "-d",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="LIDC CT series directory.",
+)
+@click.option(
+    "--xml",
+    "xml_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Matching LIDC annotation XML (omit to skip masks).",
+)
+@click.option(
+    "--output",
+    "-o",
+    "out_dir",
+    required=True,
+    type=click.Path(),
+    help="Output directory for the CT NRRD + mask NRRDs + nodules.csv.",
+)
+@click.option("--pid", required=True, help="Patient identifier used as the filename prefix.")
 def convert_one(dicom_dir, xml_path, out_dir, pid):
     """Convert a single LIDC patient (CT + XML → NRRDs + CSV).
 
@@ -46,8 +59,9 @@ def convert_one(dicom_dir, xml_path, out_dir, pid):
     result = convert_patient(dicom_dir, xml_path, out_dir, pid)
     click.echo(f"CT  → {result['ct_nrrd']}  size={result['ct_size']}")
     for r in result["readers"]:
-        click.echo(f"  reader {r['session_index']}: "
-                   f"{r['n_nodules']} nodule(s) → {r['mask_nrrd']}")
+        click.echo(
+            f"  reader {r['session_index']}: " f"{r['n_nodules']} nodule(s) → {r['mask_nrrd']}"
+        )
     if result["nodules_csv"]:
         click.echo(f"nodules CSV → {result['nodules_csv']}")
 
@@ -55,36 +69,43 @@ def convert_one(dicom_dir, xml_path, out_dir, pid):
 def _convert_one_task(args):
     pid, dicom_dir, xml_path, out_dir = args
     try:
-        result = convert_patient(dicom_dir, xml_path,
-                                  Path(out_dir) / pid, pid)
+        result = convert_patient(dicom_dir, xml_path, Path(out_dir) / pid, pid)
         return (pid, result, None)
     except Exception as e:
         return (pid, None, str(e))
 
 
 @lidc.command("convert-cohort")
-@click.option("--src", required=True, type=click.Path(exists=True, file_okay=False),
-              help="Root of the LIDC-IDRI tree (TCIA layout).")
-@click.option("--out", "out_dir", required=True, type=click.Path(),
-              help="Output root; one subdir per patient.")
-@click.option("--limit", type=int, default=None,
-              help="Stop after N patients (smoke testing).")
-@click.option("--jobs", "-j", type=int, default=4,
-              help="Parallel worker processes (default 4).")
+@click.option(
+    "--src",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Root of the LIDC-IDRI tree (TCIA layout).",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(),
+    help="Output root; one subdir per patient.",
+)
+@click.option("--limit", type=int, default=None, help="Stop after N patients (smoke testing).")
+@click.option("--jobs", "-j", type=int, default=4, help="Parallel worker processes (default 4).")
 def convert_cohort(src, out_dir, limit, jobs):
     """Walk an LIDC-IDRI tree and convert every patient in parallel.
 
     Writes per-patient outputs under `<out>/<pid>/` plus a top-level
     `<out>/cohort_summary.csv` recording success/failure + nodule counts.
     """
-    src = Path(src); out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    src = Path(src)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     cases = list(scan_lidc_dir(src))
     if limit:
         cases = cases[:limit]
     click.echo(f"found {len(cases)} CT series under {src}")
 
-    work = [(pid, str(d), str(x) if x else None, str(out_dir))
-            for pid, d, x in cases]
+    work = [(pid, str(d), str(x) if x else None, str(out_dir)) for pid, d, x in cases]
 
     summary_rows = []
     n_ok = n_fail = 0
@@ -101,11 +122,16 @@ def convert_cohort(src, out_dir, limit, jobs):
                 n_readers = len(result["readers"])
                 n_nodules = sum(r["n_nodules"] for r in result["readers"])
                 click.echo(f"  ✓ {pid}: {n_readers} reader(s), {n_nodules} nodule(s)")
-                summary_rows.append({"pid": pid, "status": "ok",
-                                     "n_readers": n_readers,
-                                     "n_nodules": n_nodules,
-                                     "ct_nrrd": result["ct_nrrd"],
-                                     "nodules_csv": result["nodules_csv"] or ""})
+                summary_rows.append(
+                    {
+                        "pid": pid,
+                        "status": "ok",
+                        "n_readers": n_readers,
+                        "n_nodules": n_nodules,
+                        "ct_nrrd": result["ct_nrrd"],
+                        "nodules_csv": result["nodules_csv"] or "",
+                    }
+                )
 
     summary_path = out_dir / "cohort_summary.csv"
     if summary_rows:

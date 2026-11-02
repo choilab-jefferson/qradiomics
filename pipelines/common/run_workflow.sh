@@ -197,6 +197,12 @@ if stage_on merge; then
     MERGE_OPTS=()
     [ -n "$TIME_COL" ]  && MERGE_OPTS+=(--time-col  "$TIME_COL")
     [ -n "$EVENT_COL" ] && MERGE_OPTS+=(--event-col "$EVENT_COL")
+    # Always pass OUTCOME through as --outcome-col: for survival tasks it's
+    # typically already one of the derived OS_months/OS_event columns (a
+    # harmless no-op, qr results merge dedupes); for classify tasks (and
+    # anything else) it's what actually makes the clinical outcome column
+    # survive the merge instead of being silently dropped.
+    [ -n "$OUTCOME" ]   && MERGE_OPTS+=(--outcome-col "$OUTCOME")
     echo "[merge] qr results merge"
     qr results merge \
         -f "$FEATURES" -c "$CLINICAL" \

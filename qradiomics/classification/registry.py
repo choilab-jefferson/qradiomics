@@ -31,22 +31,32 @@ from sklearn.svm import SVC
 # Builder functions
 # ---------------------------------------------------------------------------
 
+
 def _lr(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(
-            solver="liblinear", class_weight="balanced",
-            max_iter=2000, random_state=rs,
-        )),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                LogisticRegression(
+                    solver="liblinear",
+                    class_weight="balanced",
+                    max_iter=2000,
+                    random_state=rs,
+                ),
+            ),
+        ]
+    )
     return pipe, {"clf__C": [0.01, 0.1, 1.0, 10.0], "clf__penalty": ["l1", "l2"]}
 
 
 def _svm(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", SVC(kernel="rbf", probability=True, class_weight="balanced", random_state=rs)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", SVC(kernel="rbf", probability=True, class_weight="balanced", random_state=rs)),
+        ]
+    )
     return pipe, {
         "clf__C": [0.01, 0.1, 1.0, 10.0, 100.0],
         "clf__gamma": [1e-4, 1e-3, 1e-2, 1e-1, "scale", "auto"],
@@ -54,12 +64,20 @@ def _svm(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
 
 
 def _extra_trees(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", ExtraTreesClassifier(
-            n_estimators=400, class_weight="balanced", random_state=rs, n_jobs=1,
-        )),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                ExtraTreesClassifier(
+                    n_estimators=400,
+                    class_weight="balanced",
+                    random_state=rs,
+                    n_jobs=1,
+                ),
+            ),
+        ]
+    )
     return pipe, {
         "clf__max_depth": [None, 6, 12],
         "clf__min_samples_leaf": [1, 3, 5],
@@ -68,12 +86,20 @@ def _extra_trees(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
 
 
 def _rf(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", RandomForestClassifier(
-            n_estimators=400, class_weight="balanced", random_state=rs, n_jobs=1,
-        )),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                RandomForestClassifier(
+                    n_estimators=400,
+                    class_weight="balanced",
+                    random_state=rs,
+                    n_jobs=1,
+                ),
+            ),
+        ]
+    )
     return pipe, {
         "clf__max_depth": [None, 6, 12],
         "clf__min_samples_leaf": [1, 3, 5],
@@ -82,10 +108,12 @@ def _rf(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
 
 
 def _gbm(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", GradientBoostingClassifier(n_estimators=200, random_state=rs)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", GradientBoostingClassifier(n_estimators=200, random_state=rs)),
+        ]
+    )
     return pipe, {
         "clf__max_depth": [2, 3, 5],
         "clf__learning_rate": [0.03, 0.1, 0.2],
@@ -94,10 +122,12 @@ def _gbm(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
 
 
 def _mlp(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", MLPClassifier(max_iter=500, early_stopping=True, random_state=rs)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", MLPClassifier(max_iter=500, early_stopping=True, random_state=rs)),
+        ]
+    )
     return pipe, {
         "clf__hidden_layer_sizes": [(64,), (128,), (64, 32), (128, 64)],
         "clf__alpha": [1e-4, 1e-3, 1e-2],
@@ -110,13 +140,22 @@ def _xgb(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
         from xgboost import XGBClassifier  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ImportError("pip install xgboost") from exc
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", XGBClassifier(
-            objective="binary:logistic", eval_metric="logloss",
-            tree_method="hist", random_state=rs, n_estimators=400, n_jobs=1,
-        )),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                XGBClassifier(
+                    objective="binary:logistic",
+                    eval_metric="logloss",
+                    tree_method="hist",
+                    random_state=rs,
+                    n_estimators=400,
+                    n_jobs=1,
+                ),
+            ),
+        ]
+    )
     return pipe, {
         "clf__max_depth": [3, 5, 7],
         "clf__learning_rate": [0.03, 0.1],
@@ -130,13 +169,22 @@ def _lgbm(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
         from lightgbm import LGBMClassifier  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ImportError("pip install lightgbm") from exc
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LGBMClassifier(
-            objective="binary", class_weight="balanced",
-            random_state=rs, n_estimators=400, n_jobs=1, verbose=-1,
-        )),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "clf",
+                LGBMClassifier(
+                    objective="binary",
+                    class_weight="balanced",
+                    random_state=rs,
+                    n_estimators=400,
+                    n_jobs=1,
+                    verbose=-1,
+                ),
+            ),
+        ]
+    )
     return pipe, {
         "clf__max_depth": [-1, 5, 8],
         "clf__num_leaves": [15, 31, 63],
@@ -160,8 +208,13 @@ def _flaml(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
         def fit(self, X, y):
             self._automl = AutoML()
             self._automl.fit(
-                X, y, task="classification", metric="roc_auc",
-                time_budget=self.time_budget, seed=self.random_state, verbose=0,
+                X,
+                y,
+                task="classification",
+                metric="roc_auc",
+                time_budget=self.time_budget,
+                seed=self.random_state,
+                verbose=0,
             )
             self.classes_ = np.unique(y)
             return self
@@ -173,10 +226,12 @@ def _flaml(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
             p = self._automl.predict_proba(X)
             return np.column_stack([1 - p, p]) if p.ndim == 1 else p
 
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", _FLAMLWrapper(time_budget=60, random_state=rs)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", _FLAMLWrapper(time_budget=60, random_state=rs)),
+        ]
+    )
     return pipe, {}
 
 
@@ -217,9 +272,15 @@ def _tpot(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
         is hit first stops the search.
         """
 
-        def __init__(self, generations: int = 10, population_size: int = 30,
-                     cv: int = 10, max_time_mins: float = 10.0,
-                     n_jobs: int = 1, random_state: int = 42):
+        def __init__(
+            self,
+            generations: int = 10,
+            population_size: int = 30,
+            cv: int = 10,
+            max_time_mins: float = 10.0,
+            n_jobs: int = 1,
+            random_state: int = 42,
+        ):
             self.generations = generations
             self.population_size = population_size
             self.cv = cv
@@ -228,11 +289,13 @@ def _tpot(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
             self.random_state = random_state
 
         def fit(self, X, y):
-            search_space = SequentialPipeline([
-                _tpot_pkg.config.get_search_space("selectors_classification"),
-                _tpot_pkg.config.get_search_space("all_transformers"),
-                _tpot_pkg.config.get_search_space("classifiers"),
-            ])
+            search_space = SequentialPipeline(
+                [
+                    _tpot_pkg.config.get_search_space("selectors_classification"),
+                    _tpot_pkg.config.get_search_space("all_transformers"),
+                    _tpot_pkg.config.get_search_space("classifiers"),
+                ]
+            )
             self._automl = TPOTClassifier(
                 search_space=search_space,
                 generations=self.generations,
@@ -255,10 +318,12 @@ def _tpot(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
             p = self._automl.predict_proba(X)
             return np.column_stack([1 - p, p]) if p.ndim == 1 else p
 
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", _TPOTWrapper(random_state=rs)),
-    ])
+    pipe = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("clf", _TPOTWrapper(random_state=rs)),
+        ]
+    )
     return pipe, {}
 
 
@@ -269,16 +334,16 @@ def _tpot(rs: int) -> tuple[Pipeline, dict[str, list[Any]]]:
 ModelBuilder = Callable[[int], tuple[Pipeline, dict[str, list[Any]]]]
 
 MODEL_REGISTRY: dict[str, ModelBuilder] = {
-    "LR":         _lr,
-    "SVM":        _svm,
+    "LR": _lr,
+    "SVM": _svm,
     "ExtraTrees": _extra_trees,
-    "RF":         _rf,
-    "GBM":        _gbm,
-    "MLP":        _mlp,
-    "XGB":        _xgb,
-    "LGBM":       _lgbm,
-    "FLAML":      _flaml,
-    "TPOT":       _tpot,
+    "RF": _rf,
+    "GBM": _gbm,
+    "MLP": _mlp,
+    "XGB": _xgb,
+    "LGBM": _lgbm,
+    "FLAML": _flaml,
+    "TPOT": _tpot,
 }
 
 # Models that are expensive/non-deterministic enough that they must be

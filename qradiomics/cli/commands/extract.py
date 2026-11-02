@@ -54,9 +54,9 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     default=1,
     show_default=True,
     help="Parallel extraction workers (ProcessPoolExecutor). Default 1 keeps "
-         "the existing sequential behaviour. Use 4-8 for typical workstations "
-         "or nproc for batch cohorts — PyRadiomics is CPU-bound so wall-clock "
-         "scales close to linearly with worker count.",
+    "the existing sequential behaviour. Use 4-8 for typical workstations "
+    "or nproc for batch cohorts — PyRadiomics is CPU-bound so wall-clock "
+    "scales close to linearly with worker count.",
 )
 @click.option(
     "--bin-width",
@@ -69,8 +69,8 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     type=str,
     default=None,
     help="Comma-separated extraction engines (pyradiomics,pysera,rtools) or "
-         "'all'. Defaults to the pattern's configured extractor, or "
-         "'pyradiomics' if none.",
+    "'all'. Defaults to the pattern's configured extractor, or "
+    "'pyradiomics' if none.",
 )
 def extract(manifest, pattern, output, jobs, bin_width, engine):
     """Extract radiomics features from a manifest.
@@ -109,9 +109,7 @@ def extract(manifest, pattern, output, jobs, bin_width, engine):
         )
 
     try:
-        engines = resolve_engines(
-            engine, tmpl.feature_extraction.extractor if tmpl else None
-        )
+        engines = resolve_engines(engine, tmpl.feature_extraction.engine_spec if tmpl else None)
     except KeyError as e:
         click.echo(str(e), err=True)
         raise SystemExit(1)
