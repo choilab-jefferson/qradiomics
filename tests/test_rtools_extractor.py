@@ -41,7 +41,7 @@ def test_binary_not_found(tmp_path, monkeypatch):
     job_dir.mkdir()
 
     extractor = RtoolsExtractor()
-    result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=1)
+    result = extractor.run_extraction(uuid4(), manifest, job_dir, {"rtools_backend": "cxx"}, jobs=1)
 
     assert result["status"] == "error"
     assert "error" in result
@@ -95,7 +95,7 @@ def test_happy_path_two_patients(tmp_path, monkeypatch):
 
     with patch("subprocess.run", side_effect=fake_run) as mock_run:
         extractor = RtoolsExtractor()
-        result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=1)
+        result = extractor.run_extraction(uuid4(), manifest, job_dir, {"rtools_backend": "cxx"}, jobs=1)
 
     assert mock_run.call_count == 2
     assert result["status"] == "extracted"
@@ -150,7 +150,7 @@ def test_subprocess_failure_isolated(tmp_path, monkeypatch):
 
     with patch("subprocess.run", side_effect=fake_run):
         extractor = RtoolsExtractor()
-        result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=1)
+        result = extractor.run_extraction(uuid4(), manifest, job_dir, {"rtools_backend": "cxx"}, jobs=1)
 
     assert result["patients_failed"] == 1
     assert result["patients_processed"] == 1
@@ -188,7 +188,7 @@ def test_skip_empty_mask(tmp_path, monkeypatch):
 
     with patch("subprocess.run", side_effect=fake_run) as mock_run:
         extractor = RtoolsExtractor()
-        result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=1)
+        result = extractor.run_extraction(uuid4(), manifest, job_dir, {"rtools_backend": "cxx"}, jobs=1)
 
     assert result["patients_skipped"] == 1
     assert result["patients_processed"] == 1
@@ -253,9 +253,24 @@ def test_jobs_parallel_path(tmp_path, monkeypatch):
 
     with patch("subprocess.run", side_effect=fake_run):
         extractor = RtoolsExtractor()
-        result = extractor.run_extraction(uuid4(), manifest, job_dir, {}, jobs=2)
+        result = extractor.run_extraction(uuid4(), manifest, job_dir, {"rtools_backend": "cxx"}, jobs=2)
 
     assert result["patients_processed"] == 2
     assert result["patients_failed"] == 0
     rows = _read_csv(job_dir / "features.csv")
     assert {r["patient_id"] for r in rows} == {"P001", "P002"}
+
+
+def test_native_backend_is_default(tmp_path):
+    """Default engine path uses the native port (no binary, no subprocess)."""
+    from qradiomics.feature.rtools.parity import synthetic_case
+
+    ip, mp, label = synthetic_case(0, tmp_path)
+    manifest = tmp_path / "manifest.csv"
+    manifest.write_text(f"patient_id,image_path,mask_path\nP1,{ip},{mp}\n")
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    with patch("subprocess.run", side_effect=AssertionError("binary must not run")):
+        result = RtoolsExtractor().run_extraction(uuid4(), manifest, job_dir, {"rtools_label": label}, jobs=1)
+    assert result["status"] == "extracted"
+    assert result["feature_count"] == 97  # parsed scalar features of "2isgcr"
