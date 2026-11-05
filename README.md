@@ -73,8 +73,10 @@ will tell you the same thing if the engine is missing.
 > [taznux/lung-image-analysis](https://github.com/taznux/lung-image-analysis), and
 > [choilab-jefferson/LungCancerScreeningRadiomics](https://github.com/choilab-jefferson/LungCancerScreeningRadiomics)
 > are **superseded** by this repo. The feature extractors are now in
-> `qradiomics.feature.rtools` (Python ITK port, numerically exact to the
-> C++ binary). New work should land here.
+> `qradiomics.feature.rtools`, a native Python port of the C++
+> `FeatureExtraction` binary (numpy + scipy; SimpleITK for image I/O only).
+> Its output matches the binary's printed values exactly, and it does not
+> require ITK Python or the compiled binary. New work should land here.
 
 **Radiomics research CLI.** `qr` does two things equally well:
 
@@ -114,7 +116,7 @@ Click CLI built on PyRadiomics, scikit-learn, and lifelines:
 | Earlier project | Stack | Role | This repo |
 |---|---|---|---|
 | [taznux/lung-image-analysis](https://github.com/taznux/lung-image-analysis) | MATLAB · MIT | LIDC-IDRI nodule detection / segmentation / characterization | superseded |
-| [taznux/radiomics-tools](https://github.com/taznux/radiomics-tools) | C++/Python (ITK, Ruffus) · MIT | DICOM tools, GrowCut segmentation, feature extraction pipeline | its feature extractor is wrapped as the `rtools` engine (`qr extract --engine rtools`); DICOM tools/GrowCut remain superseded |
+| [taznux/radiomics-tools](https://github.com/taznux/radiomics-tools) | C++/Python (ITK, Ruffus) · MIT | DICOM tools, GrowCut segmentation, feature extraction pipeline | its `FeatureExtraction` binary is ported to native Python as the `rtools` engine (`qr extract --engine rtools`; ITK Python not required, `rtools_backend="cxx"` keeps the binary for parity checks, `rtools_ibsi=True` selects an opt-in IBSI-1 profile); DICOM tools/GrowCut remain superseded |
 | [choilab-jefferson/LungCancerScreeningRadiomics](https://github.com/choilab-jefferson/LungCancerScreeningRadiomics) | MATLAB / Python · GPL-3.0 | LIDC + LUNGx end-to-end screening workflow with AutoML | superseded (this repo re-implements the open subset under MIT using PyRadiomics) |
 
 The AHSN shape descriptor pipeline (CMPB 2014) and the spiculation
