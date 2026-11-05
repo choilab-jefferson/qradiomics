@@ -1,9 +1,16 @@
 """
-Radiomics extraction service (sync API) — legacy radiomics-tools backend.
+Radiomics extraction service (sync API) — radiomics-tools engine.
 
-Mirrors qradiomics/extractor.py's RadiomicsExtractor contract but delegates
-per-patient feature extraction to the legacy C++ ``FeatureExtraction`` binary
-(paper's radiomics-tools) via subprocess, instead of PyRadiomics/PySERA.
+Mirrors qradiomics/extractor.py's RadiomicsExtractor contract.  By default the
+features come from the native Python port in :mod:`qradiomics.feature.rtools`,
+which reproduces the legacy C++ ``FeatureExtraction`` binary to its printed
+precision.  Settings:
+
+- ``rtools_backend``: ``"python"`` (default) or ``"cxx"`` (shell out to the
+  legacy binary; parity checks only).
+- ``rtools_ibsi``: ``True`` selects the opt-in IBSI-1 profile (python only;
+  ``rtools_ibsi_bin_width`` / ``rtools_ibsi_bin_number`` choose the
+  discretisation).
 """
 from __future__ import annotations
 
@@ -86,8 +93,12 @@ class RtoolsExtractor:
         This is a blocking call intended to be run inside a ThreadPoolExecutor.
         Returns a result dict compatible with RadiomicsExtractor.run_extraction.
         """
+        settings = dict(extraction_settings or {})
+        backend = str(settings.get("rtools_backend", "python"))
+        if settings.get("rtools_ibsi"):
+            backend = "ibsi"
         binary_path = _default_binary_path()
-        if not binary_path.is_file():
+        if backend == "cxx" and not binary_path.is_file():
             logger.error("radiomics-tools binary not found at %s", binary_path)
             return {
                 "features_uri": f"file://{job_dir.resolve()}/features.csv",
@@ -100,11 +111,16 @@ class RtoolsExtractor:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        settings = dict(extraction_settings or {})
         label = str(settings.get("rtools_label", 1))
         feature_select = str(settings.get("rtools_feature_select", "2isgcr"))
         bins = str(settings.get("rtools_bins", 64))
         timeout = settings.get("rtools_timeout", 120)
+        if backend == "ibsi":
+            feature_select = {
+                k: settings[k]
+                for k in ("rtools_ibsi_bin_width", "rtools_ibsi_bin_number")
+                if settings.get(k) is not None
+            }
 
         all_features: List[Dict[str, Any]] = []
         patients_processed = 0
@@ -136,6 +152,7 @@ class RtoolsExtractor:
         if jobs <= 1:
             for row in to_run:
                 result = self._extract_one(
+                    backend,
                     binary_path,
                     label,
                     feature_select,
@@ -154,6 +171,7 @@ class RtoolsExtractor:
                 future_to_pid = {
                     ex.submit(
                         self._extract_one,
+                        backend,
                         binary_path,
                         label,
                         feature_select,
@@ -209,6 +227,7 @@ class RtoolsExtractor:
 
     @staticmethod
     def _extract_one(
+        backend: str,
         binary_path: Path,
         label: str,
         feature_select: str,
@@ -217,7 +236,8 @@ class RtoolsExtractor:
         job_dir: Path,
         row: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
-        """Run the binary for one manifest row; return the feature dict, or
+        """Extract one manifest row (native port, or the legacy binary when
+        ``backend == "cxx"``); return the feature dict, or
         None on failure (caller counts the None as patients_failed)."""
         patient_id = row.get("patient_id")
         image_path = row.get("image_path")
@@ -226,6 +246,11 @@ class RtoolsExtractor:
 
         out_txt = job_dir / f"_rtools_{patient_id}.txt"
         try:
+            if backend in ("python", "ibsi"):
+                feats = _extract_native(backend, image_path, mask_path, label, feature_select, bins)
+                feature_dict = {"patient_id": patient_id, **feats}
+                logger.info("Extracted %d features for %s", len(feature_dict) - 1, patient_id)
+                return feature_dict
             subprocess.run(
                 [
                     str(binary_path),
@@ -264,6 +289,23 @@ class RtoolsExtractor:
                 out_txt.unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+def _extract_native(backend, image_path, mask_path, label, feature_select, bins) -> Dict[str, float]:
+    """Features from the native port (``backend`` = ``python`` | ``ibsi``)."""
+    from qradiomics.feature.rtools import extract_features
+
+    if backend == "ibsi":
+        kw = feature_select if isinstance(feature_select, dict) else {}
+        ibsi_kw = {}
+        if "rtools_ibsi_bin_width" in kw:
+            ibsi_kw["bin_width"] = float(kw["rtools_ibsi_bin_width"])
+        if "rtools_ibsi_bin_number" in kw:
+            ibsi_kw["bin_number"] = int(kw["rtools_ibsi_bin_number"])
+        return extract_features(image_path, mask_path, label=int(label), ibsi=True, **ibsi_kw)
+    return extract_features(
+        image_path, mask_path, label=int(label), feature_select=feature_select, number_of_bins=int(bins)
+    )
 
 
 def get_rtools_extractor() -> RtoolsExtractor:
