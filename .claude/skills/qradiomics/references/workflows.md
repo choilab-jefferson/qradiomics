@@ -9,7 +9,7 @@ lowest one that does the job:
 2. **A workflow plan** — a JSON/YAML `WorkflowPlan` you generate, edit, and run or
    scaffold to Nextflow/Prefect/shell. Best for a cohort you'll rerun. This page.
 3. **A production pipeline directory** — a self-contained bundle under `pipelines/`
-   (`plan.json` + `main.nf` + `nextflow.config` + `deploy.sh` + clinical stub). Best
+   (`plan.json` + `nextflow.config` + `deploy.sh` + clinical stub). Best
    for a cohort you'll deploy/hand off. This page, last section.
 
 The engine lives in `qradiomics/workflow.py` and is deliberately small: a plan is
@@ -114,16 +114,12 @@ that tool on PATH (`pip install nextflow` / `curl -fsSL https://get.nextflow.io 
 and hand off:
 
 ```bash
-qr workflow scaffold -p plan.json -e nextflow -o main.nf         # per-patient DSL2 processes
 qr workflow scaffold -p plan.json -e shell    -o pipeline.sh     # plain bash, vars as ${UPPER}
 # prefect: qr workflow run --executor prefect scaffolds a flow internally; or scaffold_prefect() in Python
 ```
 
-The Nextflow scaffold turns each step into a `process p_<id>`, lifts `vars` to
-`params.*`, tags per-patient processes with `$pid`, and chains processes by their
-declared order. Pair it with a `nextflow.config` that defines `local` / `docker` /
-`slurm` profiles (copy `pipelines/lung1/nextflow.config`), then
-`nextflow run main.nf -profile local -resume`.
+Nextflow is not scaffolded per cohort any more: `qr workflow run plan.json --executor
+nextflow` runs the plan through the packaged generic pipeline (refs #25).
 
 ## Build a production pipeline directory
 
@@ -133,7 +129,6 @@ To ship a cohort as a deployable bundle, mirror the layout of `pipelines/lung1/`
 pipelines/<cohort>/
 ├── README.md          — what it does + how to run
 ├── plan.json          — qr workflow plan (source of truth)
-├── main.nf            — scaffolded: qr workflow scaffold -p plan.json -e nextflow
 ├── nextflow.config    — local / docker / slurm profiles
 ├── prefect_flow.py    — scaffolded Prefect flow (optional)
 ├── deploy.sh          — pip install + fetch data + run (one command)
@@ -146,9 +141,9 @@ Recipe:
    --roi <ROI> --pattern <id> --task <survival|classify> --outcome <col> -o plan.json`.
 2. Edit `plan.json` `vars` for the cohort (collection, ROI names, glob patterns, column
    names). Confirm with `qr workflow run plan.json --executor inline --dry-run`.
-3. `qr workflow scaffold -p plan.json -e nextflow -o main.nf` and copy a `nextflow.config`.
+3. Copy a `nextflow.config` (optional; loaded from `--run-dir`).
 4. Write `deploy.sh` (see `pipelines/lung1/deploy.sh`): install `qradiomics[rtstruct,prefect]`,
-   fetch Nextflow if missing, `nextflow run main.nf -profile local -resume`.
+   fetch Nextflow if missing, `qr workflow run plan.json --executor nextflow`.
 5. Add a smoke path — see `references/testing.md`. Register any new pipeline module with a
    `tests/test_<module>.py` synthetic-data test (`AGENTS.md §7`).
 

@@ -13,7 +13,6 @@ optionally with `_1mm` or `_iso` suffix when resampled.
 
 from __future__ import annotations
 
-import csv
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -51,11 +50,15 @@ def _align_mask_to_image(image, mask):
 
 
 def _crop_one(args):
-    """Per-patient crop (+ optional resample). Returns (pid, ct_out, mask_out, err)."""
-    pid, image_path, mask_path, out_dir, roi, pad_mm, resample = args
+    """Per-row crop (+ optional resample). Returns (row_id, ct_out, mask_out, err).
+
+    `modality` names the image output (default CT); `resample` is the row's own
+    isotropic spacing in mm (None = no resample)."""
+    pid, image_path, mask_path, out_dir, roi, pad_mm, resample = args[:7]
+    modality = args[7] if len(args) > 7 else "CT"
     try:
-        import SimpleITK as sitk
         import numpy as np
+        import SimpleITK as sitk
 
         image = sitk.ReadImage(image_path)
         mask = sitk.ReadImage(mask_path)
@@ -87,7 +90,7 @@ def _crop_one(args):
             cropped_msk = _resample(cropped_msk, spacing, is_label=True)
             suffix = f"_cropped-{resample}mm" if resample != 1.0 else "_cropped-1mm"
 
-        ct_out = Path(out_dir) / f"{pid}{suffix}_CT.nrrd"
+        ct_out = Path(out_dir) / f"{pid}{suffix}_{modality}.nrrd"
         msk_out = Path(out_dir) / f"{pid}{suffix}_{roi}-label.nrrd"
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         sitk.WriteImage(cropped_img, str(ct_out))
@@ -98,8 +101,8 @@ def _crop_one(args):
 
 
 def _resample(image, spacing_xyz, is_label):
-    import SimpleITK as sitk
     import numpy as np
+    import SimpleITK as sitk
 
     rf = sitk.ResampleImageFilter()
     in_spacing = np.array(image.GetSpacing())
@@ -119,7 +122,13 @@ def _resample(image, spacing_xyz, is_label):
     "-m",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
-    help="Manifest CSV (patient_id, modality, image_path, mask_path)",
+    help="Manifest (.csv/.parquet): patient_id, modality, image_path, mask_path;"
+    " optional pair_id, roi_used, resample_mm (see qr convert from-manifest)",
+)
+@click.option(
+    "--only",
+    default=None,
+    help="Only this pair_id (else patient_id). Fails if it matches nothing.",
 )
 @click.option(
     "--output",
@@ -141,16 +150,17 @@ def _resample(image, spacing_xyz, is_label):
     "--resample",
     default=None,
     type=float,
-    help="Isotropic spacing in mm (e.g. 1.0). Omit to skip resampling.",
+    help="Isotropic spacing in mm (e.g. 1.0). Omit to skip resampling. A row's"
+    " own resample_mm column overrides it (CT 1 mm / PT 4 mm per pair).",
 )
 @click.option("--jobs", "-j", default=1, type=int, help="Worker processes (default 1).")
 @click.option(
     "--out-manifest",
     default=None,
     type=click.Path(),
-    help="If set, also write a new manifest CSV pointing at the cropped pairs.",
+    help="If set, also write a new manifest (.csv/.parquet by suffix) pointing at the cropped pairs.",
 )
-def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest):
+def preprocess(manifest, only, output, roi_name, pad_mm, resample, jobs, out_manifest):
     """Crop and optionally resample image+mask pairs from a manifest.
 
     \b
@@ -158,14 +168,35 @@ def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest)
         qr preprocess -m manifest.csv -o cropped/ --roi-name GTV-1 \\
             --pad-mm 20 --resample 1.0 --jobs 8 --out-manifest cropped.csv
     """
-    rows = list(csv.DictReader(open(manifest)))
-    total = len(rows)
-    click.echo(f"Reading manifest: {manifest}  ({total} patients, jobs={jobs})")
+    from qradiomics import pairs as pm
 
+    try:
+        df = pm.select_rows(pm.read_manifest(manifest), only=only)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    rows = df.to_dict("records")
+    total = len(rows)
+    click.echo(f"Reading manifest: {manifest}  ({total} row(s), jobs={jobs})")
+
+    def row_resample(r):
+        v = str(r.get("resample_mm", "")).strip()
+        return float(v) if v else resample
+
+    # Output files are keyed by pair_id when present (several pairs per case).
     work = [
-        (r["patient_id"], r["image_path"], r["mask_path"], output, roi_name, pad_mm, resample)
+        (
+            r.get("pair_id") or r.get("patient_id") or r.get("case_id"),
+            r["image_path"],
+            r["mask_path"],
+            output,
+            r.get("roi_used") or roi_name,
+            pad_mm,
+            row_resample(r),
+            r.get("modality") or "CT",
+        )
         for r in rows
     ]
+    meta = {w[0]: (r.get("patient_id") or r.get("case_id"), w[7], r) for w, r in zip(work, rows)}
 
     results = []
     if jobs <= 1:
@@ -193,16 +224,32 @@ def preprocess(manifest, output, roi_name, pad_mm, resample, jobs, out_manifest)
                 sys.stdout.flush()
 
     if out_manifest:
-        with open(out_manifest, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=["patient_id", "modality", "image_path", "mask_path"])
-            w.writeheader()
-            for pid, ct, msk, err in results:
-                if err is None and ct and msk:
-                    w.writerow(
-                        {"patient_id": pid, "modality": "CT", "image_path": ct, "mask_path": msk}
+        import pandas as pd
+
+        pair_mode = "pair_id" in df.columns
+        out_rows = []
+        for rid, ct, msk, err in sorted(results, key=lambda x: str(x[0])):
+            if err is None and ct and msk:
+                case, modality, src = meta[rid]
+                row = {"patient_id": case, "modality": modality, "image_path": ct, "mask_path": msk}
+                if pair_mode:
+                    row.update(
+                        pair_id=src["pair_id"],
+                        roi_used=src.get("roi_used", ""),
+                        resample_mm=src.get("resample_mm", ""),
                     )
+                out_rows.append(row)
+        cols = ["patient_id", "modality", "image_path", "mask_path"] + (
+            ["pair_id", "roi_used", "resample_mm"] if pair_mode else []
+        )
+        pm.write_manifest(pd.DataFrame(out_rows, columns=cols), out_manifest)
         click.echo(f"Wrote cropped manifest → {out_manifest}")
 
     ok = sum(1 for r in results if not r[3])
     fail = total - ok
     click.echo(f"\nPreprocess: {ok} ok, {fail} failed → {output}")
+    for r in results:
+        if r[3]:
+            click.echo(f"  FAILED {r[0]}: {r[3]}", err=True)
+    if only and fail:
+        raise SystemExit(1)  # a single-pair task must fail loudly (nextflow errorStrategy)

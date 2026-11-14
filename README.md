@@ -83,9 +83,9 @@ will tell you the same thing if the engine is missing.
 1. **Atomic tasks** — convert DICOM, extract features, merge clinical, fit
    a model. Each is a single command, files in / files out.
 2. **Workflow assembly** — generate, mutate, scaffold, and run multi-step
-   pipelines from those atomic tasks. Default executor is **Nextflow**
-   (per-patient parallel + cache + HPC); **Prefect** is the secondary
-   executor; `inline` is the small-cohort fallback.
+   pipelines from those atomic tasks. Default executor is `inline`;
+   `--executor nextflow` runs bulk cohorts (per-case parallel + cache + HPC);
+   **Prefect** is the secondary executor.
 
 The canonical radiomics data flow has four stages — `data → image →
 features → modeling` — and one `qr workflow plan` call instantiates the
@@ -118,6 +118,24 @@ Click CLI built on PyRadiomics, scikit-learn, and lifelines:
 | [taznux/lung-image-analysis](https://github.com/taznux/lung-image-analysis) | MATLAB · MIT | LIDC-IDRI nodule detection / segmentation / characterization | superseded |
 | [taznux/radiomics-tools](https://github.com/taznux/radiomics-tools) | C++/Python (ITK, Ruffus) · MIT | DICOM tools, GrowCut segmentation, feature extraction pipeline | its `FeatureExtraction` binary is ported to native Python as the `rtools` engine (`qr extract --engine rtools`; ITK Python not required, `rtools_backend="cxx"` keeps the binary for parity checks, `rtools_ibsi=True` selects an opt-in IBSI-1 profile); DICOM tools/GrowCut remain superseded |
 | [choilab-jefferson/LungCancerScreeningRadiomics](https://github.com/choilab-jefferson/LungCancerScreeningRadiomics) | MATLAB / Python · GPL-3.0 | LIDC + LUNGx end-to-end screening workflow with AutoML | superseded (this repo re-implements the open subset under MIT using PyRadiomics) |
+
+### Performance of the `rtools` port
+
+On synthetic ROIs the native `rtools` port is faster than the C++
+`FeatureExtraction` binary it replaces, with identical printed values.
+Single thread, full feature set, median wall time (speedup over the binary):
+
+| ROI voxels | C++ binary | Python (new process) | Python (in-process) |
+|---:|---:|---:|---:|
+| 1015 | 0.163 s | 0.593 s (0.275x) | 0.0363 s (4.5x) |
+| 4992 | 0.709 s | 0.686 s (1.03x) | 0.125 s (5.66x) |
+| 20035 | 3.42 s | 0.971 s (3.53x) | 0.251 s (13.7x) |
+| 99967 | 23.9 s | 1.97 s (12.1x) | 1.11 s (21.6x) |
+| 400014 | 137 s | 5.41 s (25.3x) | 4.71 s (29x) |
+
+A new Python process pays a one-time import cost of about 0.437 s, so for
+a single ROI under about 4800 voxels the binary is faster per process. Details:
+[reports/rtools_port_speed_benchmark.md](reports/rtools_port_speed_benchmark.md).
 
 The AHSN shape descriptor pipeline (CMPB 2014) and the spiculation
 quantification pipeline (CMPB 2021, companion to
@@ -265,7 +283,7 @@ Browse the bundled patterns with `qr pattern list` and `qr pattern search <kw>`.
 ## Deployable Pipelines
 
 For each TCIA-public cohort, [`pipelines/`](pipelines/) ships a ready-
-to-run bundle: `plan.json` + `main.nf` + `prefect_flow.py` +
+to-run bundle: `plan.json` + `prefect_flow.py` +
 `nextflow.config` + `deploy.sh`. Run any cohort end-to-end with:
 
 ```bash
@@ -296,19 +314,99 @@ qr workflow plan -t dicom_to_ml \
     --roi GTV --pattern nsclc-survival \
     -o plan.json
 
-# 2. (Optional) scaffold a Nextflow file for inspection / editing
+# 2. (Optional, deprecated) emit the legacy generated Nextflow file. NOT what
+#    `run -e nextflow` executes (that is the packaged qradiomics/nf/main.nf).
 qr workflow scaffold -p plan.json -e nextflow -o pipeline.nf
 
-# 3. Run — default executor is Nextflow (per-patient parallel + cache)
+# 3. Run — default executor is inline
 qr workflow run plan.json
-qr workflow run plan.json --executor inline      # small interactive
+qr workflow run plan.json --executor nextflow    # bulk, see "Bulk runs with Nextflow"
 qr workflow run plan.json --executor prefect     # Prefect-orchestrated
 ```
 
 The plan is plain JSON/YAML — agents can read, mutate (add a stage,
 swap a pattern, change the executor), and re-run without re-templating.
 Per-patient steps are marked in the plan and fanned out automatically
-by the Nextflow / Prefect scaffolders.
+by the Nextflow / Prefect executors.
+
+### Bulk runs with Nextflow
+
+`qr workflow run --executor nextflow` runs any plan through one generic,
+packaged pipeline (`qradiomics/nf/main.nf`; needs `nextflow` and Java 17+).
+Plan steps carry a `fanout`: `null` (once per cohort), `"case"` (one task per
+case id, `{case_id}` / `{patient_id}` substituted; `per_patient: true` is the
+legacy alias) or `"pair"` (one task per image x label pair, `{pair_id}` too).
+Order must be cohort steps, case steps, pair steps, cohort steps. Processes:
+`QR_PRE` (once) -> `QR_CASE` (per case) -> `QR_PAIR` (per pair, joined to its
+case by case id) -> `QR_POST` (once). Every task is just the plan's own
+`qr ...` command lines, so `-resume` caches on the exact commands + ids.
+
+> **Resume caveat.** `-resume` is on by default and keys on the commands, the
+> qradiomics / pyradiomics / pysera versions, the container digest, the extraction
+> pattern content and (per case / pair) `series_uid` + `rtstruct_sha`; a non-pair
+> manifest's file content is hashed too. It does **not** see
+> image / mask file contents: after re-segmenting or replacing input files,
+> delete the run dir or pass `--no-resume`, otherwise tasks come back "cached".
+> If a declared cohort output (e.g. `features.csv`) is missing, the run
+> automatically starts without `-resume` and logs a warning. The final
+> cohort steps re-run whenever any case's commands change.
+
+```bash
+# case list = patient_id column of the manifest (default: sub-dirs of cohort_root);
+# --manifest applies to inline and nextflow alike. Ids must match [A-Za-z0-9_.-]+.
+qr workflow run plan.json -e nextflow -m manifest.csv --run-dir runs/nf            # local
+qr workflow run plan.json -e nextflow -m manifest.csv --run-dir runs/nf --profile slurm
+# after a failure or an edit, the same command resumes; --no-resume forces a rerun
+```
+
+Slurm: `--profile slurm` submits each task via sbatch. There is no queue/cpus/memory
+flag; put them in a `nextflow.config` inside `--run-dir` (auto-loaded), e.g.
+`process { queue = 'gpu'; cpus = 4; memory = '16 GB' }`.
+
+`--run-dir` holds `params.json`, `work/` and `.nextflow/`; the run reports are
+`<plan outdir>/pipeline_info/{trace.txt,report.html,timeline.html,dag.html}`;
+per-case markers are published to `<plan outdir>/<case_id>/`, per-pair provenance to
+`<plan outdir>/prov/<pair_id>.prov.json` (sha256 of every declared output +
+qradiomics / pyradiomics / pysera versions + container ref).
+
+Failure policy and containers:
+
+```bash
+# one bad pair is dropped, the rest merges, the coverage table says what is missing
+qr workflow run plan.json -e nextflow -m pairs.parquet --on-error ignore --max-forks 8
+# every task in a digest-pinned image (tags are rejected); docker unless --profile
+# names singularity/apptainer; params.bind adds extra mounts (default: cwd + outdir)
+qr workflow run plan.json -e nextflow -m pairs.parquet --container reg/qr@sha256:<64 hex>
+```
+
+### Pair manifest (selection -> pipeline contract)
+
+One row per (image, label) pair, `.parquet` (preferred) or `.csv`; written by the
+selection step, read by everything downstream (`qr select validate` checks it):
+
+| column | meaning |
+|---|---|
+| `cohort`, `case_id`, `pair_id` | ids, `[A-Za-z0-9_.-]+`; `pair_id` unique (fan-out key) |
+| `image_key`, `label_key` | roles, e.g. `CT`/`PT`, `manual`/`auto` |
+| `series_uid`, `series_dir` | chosen image series |
+| `rtstruct_path`, `rtstruct_sha` | RTSTRUCT file and its sha256 (cache identity) |
+| `roi_candidates` | `Heart\|heart\|HEART`: first present ROI wins, none present = pair fails |
+| `resample_mm` | isotropic resample (CT 1, PT 4 in the legacy pipelines); empty = none |
+| `status`, `reason` | `ok`/`skipped`/`failed`; a reason is required unless `ok` |
+
+Only `ok` rows run; the rest stay in the manifest and show up in the coverage
+table (`qr results merge --pairs M --coverage C`, one row per manifest pair with
+`merged` / `missing_features` / `no_clinical` / `skipped` / `failed`).
+The RTSTRUCT is rasterised on the case's CT series (also for PT pairs; preprocess
+resamples the label onto the PT grid). Template: `qr workflow plan -t
+rt_pair_radiomics --pair-manifest pairs.parquet --clinical clinical.csv -o plan.json`.
+`convert from-manifest`, `preprocess` and `extract` take `--only <pair_id>`
+(`--only-case <case_id>` for convert) through one shared manifest reader.
+
+> **Deprecated:** `qr workflow scaffold -e nextflow|prefect` still emits the
+> legacy generated file, not the pipeline `run -e nextflow` uses. The generated
+> `pipelines/*/main.nf` copies were removed; every cohort runs through the
+> single entry point `qr workflow run <plan>.json --executor nextflow`.
 
 ## Validated Cohorts
 

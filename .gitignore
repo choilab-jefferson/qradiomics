@@ -62,13 +62,11 @@ dmypy.json
 
 # Node.js
 node_modules/
-frontend/node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
-frontend/build
 build/
 dist/*
 generated_pipelines/
@@ -121,9 +119,6 @@ work/
 .nextflow/
 .nextflow.log*
 
-# Radiomics tools binaries (large files - keep local only)
-backend/tools/bin/
-
 # MCP logs
 mcp_server.log
 mcp_errors_*.log
@@ -145,8 +140,6 @@ logs
 HIVE
 intelligent_kb
 
-# Symlinks to related projects
-backend/hive
 *.pid
 
 # Temporary debug directories
@@ -163,7 +156,6 @@ bandit-report.json
 .specify/
 
 # Runtime logs
-backend.log
 server.log
 uvicorn_*.log
 prefect_server.log

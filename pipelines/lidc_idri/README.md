@@ -23,7 +23,6 @@ qr workflow plan -t dicom_to_ml -d runs/lidc_idri/nrrd \
     -c clinical/clinical.csv --roi Nodule --pattern ct-default \
     --task classify --outcome malignancy \
     -o plan.json
-qr workflow scaffold -p plan.json -e nextflow -o main.nf
 ./deploy.sh
 ```
 

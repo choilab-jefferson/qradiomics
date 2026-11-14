@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qradiomics"
-version = "0.9.7"
+version = "0.9.8"
 description = "Radiomics research CLI — extract, merge, analyze in one Unix-style pipeline."
 readme = "README.md"
 license = {text = "MIT"}
@@ -43,6 +43,9 @@ dependencies = [
     # "missing 1 required positional argument" on any pandas>=3.0. Cap until
     # statsmodels ships a pandas-3-compatible release.
     "pandas>=1.5.0,<3.0",
+    # pyarrow: parquet pair manifests (qradiomics.pairs read/write_manifest) are
+    # read by core `qr` commands (convert, preprocess, extract, select, results merge).
+    "pyarrow>=14.0",
     "scikit-learn>=1.2.0",
     "scikit-image>=0.21.0",
     "lifelines>=0.27.0",
@@ -79,6 +82,17 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
 ]
+# Everything needed to run tests/ from PyPI. pyradiomics is not listed (no
+# Python 3.10+ install from PyPI); its tests skip when it is absent.
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pingouin>=0.5.3",
+    "rt-utils>=1.2.7",
+]
+analytics = [
+    "pingouin>=0.5.3",
+]
 pysera = [
     "pysera",
 ]
@@ -105,7 +119,7 @@ include = ["qradiomics*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-"qradiomics" = ["data/templates/*.yaml", "data/pyradiomics/*.yaml", "data/schema/*.yaml"]
+"qradiomics" = ["data/templates/*.yaml", "data/pyradiomics/*.yaml", "data/schema/*.yaml", "nf/*.nf", "nf/*.config"]
 
 [tool.black]
 line-length = 100

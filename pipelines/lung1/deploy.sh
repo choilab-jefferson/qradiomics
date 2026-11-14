@@ -22,7 +22,7 @@ if [ "$EXECUTOR" = "nextflow" ]; then
         curl -fsSL https://get.nextflow.io | bash
         export PATH="$PWD:$PATH"
     fi
-    nextflow run main.nf -profile local -resume
+    qr workflow run plan.json --executor nextflow --profile local --run-dir nf_run
 elif [ "$EXECUTOR" = "prefect" ]; then
     python prefect_flow.py
 else

@@ -1,4 +1,6 @@
 """Tests for qradiomics.verification — AB-parity harness."""
+import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -58,12 +60,14 @@ class TestCompareFeatureDicts:
         assert any("extra" in l for l in labels)
 
 
-_PARITY_ROOT = Path("/path/to/parity_cases")
+# Optional local cohort root (set QR_PARITY_CASES_DIR to enable).
+_PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent"))
 
 
 @pytest.mark.skipif(
-    not _PARITY_ROOT.exists(),
-    reason="local cohort absent — sweep integration skipped",
+    not _PARITY_ROOT.exists()
+    or importlib.util.find_spec("radiomics") is None,
+    reason="local cohort or pyradiomics absent — sweep integration skipped",
 )
 def test_run_ab_sweep_self_pair_is_zero_diff(tmp_path):
     """Sweep qradiomics.atomic against itself across 2 real cases — must

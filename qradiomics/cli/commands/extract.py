@@ -32,7 +32,14 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     "-m",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
-    help="Manifest CSV with columns: patient_id, modality, image_path, mask_path",
+    help="Manifest (.csv/.parquet) with columns: patient_id, modality, image_path,"
+    " mask_path; pair manifests also carry pair_id (one features row per pair).",
+)
+@click.option(
+    "--only",
+    default=None,
+    help="Extract only this pair_id (else patient_id). Fails if it matches nothing or"
+    " produces no features, so a per-pair task fails loudly.",
 )
 @click.option(
     "--pattern",
@@ -72,7 +79,15 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     "'all'. Defaults to the pattern's configured extractor, or "
     "'pyradiomics' if none.",
 )
-def extract(manifest, pattern, output, jobs, bin_width, engine):
+@click.option(
+    "--case",
+    "cases",
+    multiple=True,
+    help="Only extract rows whose case_id / patient_id equals this id (repeatable). "
+    "Used for per-case fan-out (qr workflow run --executor nextflow); "
+    "--output then holds just those cases.",
+)
+def extract(manifest, only, pattern, output, jobs, bin_width, engine, cases):
     """Extract radiomics features from a manifest.
 
     \b
@@ -85,6 +100,7 @@ def extract(manifest, pattern, output, jobs, bin_width, engine):
         qr extract -m manifest.csv -o features.csv --engine pysera
         qr extract -m manifest.csv -o features.csv --engine pyradiomics,pysera
         qr extract -m manifest.csv -o features.csv --engine all
+        qr extract -m manifest.csv -o cases/P001/features.csv --case P001
     """
     extraction_settings: dict = {}
     tmpl = None
@@ -137,11 +153,30 @@ def extract(manifest, pattern, output, jobs, bin_width, engine):
     job_dir.mkdir(parents=True, exist_ok=True)
 
     click.echo(f"Reading manifest: {manifest}")
+    from qradiomics import pairs as pm
+
+    try:
+        mdf = pm.read_manifest(manifest)
+        mdf = pm.select_rows(mdf, only=only, cases=cases) if (only or cases) else mdf
+    except ValueError as e:
+        click.echo(str(e), err=True)
+        raise SystemExit(1)
+    pair_mode = pm.is_pair_manifest(mdf)
+    manifest_path = Path(manifest)
+    case_of: dict = {}
+    if only or cases or pair_mode or manifest_path.suffix == ".parquet":
+        if pair_mode:
+            # Engines key result rows on patient_id, which repeats across the pairs
+            # of one case: key on pair_id for the run, map back to the case after.
+            case_of = dict(zip(mdf["pair_id"], mdf["patient_id"]))
+            mdf = mdf.assign(patient_id=mdf["pair_id"])
+        manifest_path = job_dir / "_manifest.csv"
+        mdf.to_csv(manifest_path, index=False)
     try:
         result = run_multi_extraction(
             engines=engines,
             job_id=uuid4(),
-            manifest_path=Path(manifest),
+            manifest_path=manifest_path,
             job_dir=job_dir,
             extraction_settings=extraction_settings,
             jobs=jobs,
@@ -155,7 +190,19 @@ def extract(manifest, pattern, output, jobs, bin_width, engine):
         click.echo("Extraction produced no features.csv", err=True)
         raise SystemExit(1)
 
+    if pair_mode:
+        import pandas as pd
+
+        fdf = pd.read_csv(produced, dtype={"patient_id": str})
+        fdf.insert(0, "pair_id", fdf["patient_id"])
+        fdf["patient_id"] = fdf["pair_id"].map(case_of)
+        fdf.to_csv(produced, index=False)
+    if only and result.get("patients_processed", 0) == 0:
+        click.echo(f"--only {only}: no features were produced", err=True)
+        raise SystemExit(1)
     os.replace(produced, output_path)
+    for leftover in (job_dir / "_manifest.csv",):
+        leftover.unlink(missing_ok=True)
     try:
         job_dir.rmdir()
     except OSError:

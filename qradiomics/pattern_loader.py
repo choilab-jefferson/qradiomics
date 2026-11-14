@@ -531,7 +531,7 @@ class SnippetCatalog:
         """COMB integration archived - patterns loaded from local YAML only."""
         if not self._comb_checked:
             self._comb_checked = True
-            # HIVE COMB removed - see backend/archive/hive/
+            # HIVE COMB removed - see tag archive/webservice-era-2026-07-09
             logger.debug("COMB disabled - using local patterns only")
             self._comb = None
         return self._comb

@@ -8,6 +8,7 @@ as failed, and exit 0 — not crash with a traceback.
 
 import csv
 import importlib
+import importlib.util
 import logging
 import sys
 
@@ -17,9 +18,15 @@ from click.testing import CliRunner
 # ProcessPoolExecutor uses 'fork' on Linux, so a monkeypatch in the parent
 # is inherited by workers. On spawn-based platforms it would not be, so scope
 # this test to Linux.
-pytestmark = pytest.mark.skipif(
-    sys.platform != "linux", reason="relies on fork-inherited monkeypatch"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        sys.platform != "linux", reason="relies on fork-inherited monkeypatch"
+    ),
+    pytest.mark.skipif(
+        importlib.util.find_spec("radiomics") is None,
+        reason="pyradiomics (optional extra) not installed",
+    ),
+]
 
 extract_mod = importlib.import_module("qradiomics.cli.commands.extract")
 extractor_mod = importlib.import_module("qradiomics.extractor")

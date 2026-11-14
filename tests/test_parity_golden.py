@@ -11,6 +11,7 @@ Regenerate intentionally via tests/fixtures/regenerate_golden_parity_case.py
 when PyRadiomics is upgraded or extract_features defaults change.
 """
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,7 @@ def golden():
 
 
 @pytest.mark.skipif(
-    not Path("/path/to/parity_cases/case01").exists(),
+    not (Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / "parity_case").exists(),
     reason="parity_case cohort data absent — parity check skipped",
 )
 class TestJLRParityGolden:

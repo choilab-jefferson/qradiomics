@@ -17,6 +17,34 @@ def _glob_suffix(glob_pattern: str) -> str:
     return glob_pattern.rsplit("*", 1)[-1] if "*" in glob_pattern else glob_pattern
 
 
+def _resolve_roi(roi_names, roi=None, candidates=None):
+    """Pick the ROI to rasterise. Returns (name, how).
+
+    - ``candidates`` (ordered): the first candidate present in the structure set
+      wins (exact match, else case-insensitive), so ``Heart|heart|HEART`` prefers
+      the exact ``Heart``. None present -> ValueError; it never falls back to an
+      arbitrary (first / last) ROI.
+    - else ``roi``: exact, else case-insensitive; absent -> ValueError.
+    - else (legacy): the first ROI, ``how == "default-first"`` (caller warns).
+    """
+    if candidates:
+        for cand in candidates:
+            if cand in roi_names:
+                return cand, "candidate"
+            ci = next((n for n in roi_names if n.lower() == cand.lower()), None)
+            if ci:
+                return ci, "candidate-ci"
+        raise ValueError(f"none of the ROI candidates {list(candidates)} is in {list(roi_names)}")
+    if roi is None:
+        return roi_names[0], "default-first"
+    if roi in roi_names:
+        return roi, "exact"
+    ci = next((n for n in roi_names if n.lower() == roi.lower()), None)
+    if ci:
+        return ci, "ci"
+    raise ValueError(f"ROI '{roi}' not in structure set. Available: {list(roi_names)}")
+
+
 @click.group()
 def convert():
     """Convert medical image formats (DICOM <-> NRRD)."""
@@ -172,13 +200,25 @@ def dicom_series(input_dir, output, modality, raw_output, suv_type, strict_suv):
     help="ROI name to convert (default: first ROI in the structure set)",
 )
 @click.option(
+    "--roi-candidates",
+    default=None,
+    help="'|'-separated ROI names tried in order, e.g. 'Heart|heart|HEART'; the first"
+    " one present is used and the command FAILS if none is (no fallback to another ROI).",
+)
+@click.option(
+    "--roi-record",
+    type=click.Path(),
+    default=None,
+    help="Write {roi_used, how, candidates} JSON here (which ROI was actually used).",
+)
+@click.option(
     "--output",
     "-o",
     required=True,
     type=click.Path(),
     help="Output NRRD label path",
 )
-def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
+def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, roi_candidates, roi_record, output):
     """Convert an RTSTRUCT contour to a binary NRRD label volume.
 
     \b
@@ -194,8 +234,8 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
           --output /data/<pat>_GTV-label.nrrd
     """
     try:
-        import SimpleITK as sitk
         import numpy as np
+        import SimpleITK as sitk
         from rt_utils import RTStructBuilder
     except ImportError as e:
         click.echo(f"Required package not available: {e}", err=True)
@@ -236,32 +276,34 @@ def rtstruct_to_nrrd(dicom_dir, rtstruct, roi, output):
         click.echo(f"No ROIs found in {rtstruct}", err=True)
         raise SystemExit(1)
 
-    target_roi = roi
-    if target_roi is None:
-        target_roi = roi_names[0]
-        if len(roi_names) > 1:
-            # Silently taking the first of several ROIs produces the wrong mask
-            # (e.g. a lung/cord contour instead of GTV-1) with no error. Make it
-            # loud so the caller notices and passes --roi.
-            click.echo(
-                f"WARNING: no --roi given and the structure set has {len(roi_names)} "
-                f"ROIs {roi_names}; defaulting to the FIRST one ('{target_roi}'), "
-                f"which is often NOT the intended target. Pass --roi explicitly.",
-                err=True,
-            )
-        else:
-            # Single-ROI RTSTRUCTs are unambiguous; stay quiet by default.
-            pass
-    elif target_roi not in roi_names:
-        # Case-insensitive fallback — RTSTRUCT ROI names are inconsistently cased
-        # across institutions (e.g., "Heart" vs "heart" vs "HEART").
-        ci_match = next((n for n in roi_names if n.lower() == target_roi.lower()), None)
-        if ci_match:
-            click.echo(f"  ROI '{target_roi}' matched '{ci_match}' (case-insensitive)")
-            target_roi = ci_match
-        else:
-            click.echo(f"ROI '{target_roi}' not in structure set. Available: {roi_names}", err=True)
-            raise SystemExit(1)
+    cands = [c.strip() for c in roi_candidates.split("|") if c.strip()] if roi_candidates else None
+    if cands and roi:
+        click.echo("--roi and --roi-candidates are mutually exclusive", err=True)
+        raise SystemExit(1)
+    try:
+        target_roi, how = _resolve_roi(roi_names, roi, cands)
+    except ValueError as e:
+        click.echo(str(e), err=True)
+        raise SystemExit(1)
+    if how == "default-first" and len(roi_names) > 1:
+        # Silently taking the first of several ROIs produces the wrong mask
+        # (e.g. a lung/cord contour instead of GTV-1) with no error. Make it
+        # loud so the caller notices and passes --roi.
+        click.echo(
+            f"WARNING: no --roi given and the structure set has {len(roi_names)} "
+            f"ROIs {roi_names}; defaulting to the FIRST one ('{target_roi}'), "
+            f"which is often NOT the intended target. Pass --roi explicitly.",
+            err=True,
+        )
+    elif how in ("ci", "candidate-ci"):
+        click.echo(f"  ROI matched '{target_roi}' (case-insensitive)")
+    if roi_record:
+        import json
+
+        Path(roi_record).parent.mkdir(parents=True, exist_ok=True)
+        Path(roi_record).write_text(
+            json.dumps({"roi_used": target_roi, "how": how, "candidates": cands or []})
+        )
 
     mask_zyx = rt.get_roi_mask_by_name(target_roi)
     # rt-utils returns (rows, cols, slices) bool array in DICOM-frame order.
@@ -431,6 +473,110 @@ def manifest_from_dir(dataset_root, image_glob, mask_glob, modality, output):
         )
 
 
+_ID_COLS = ("patient_id", "anon_pid", "pid")
+_IMAGE_COLS = ("image_path", "image_nrrd", "image")
+_MASK_COLS = ("mask_path", "mask_nrrd", "mask")
+
+
+@convert.command("manifest-select")
+@click.option(
+    "--manifest",
+    "-m",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Source manifest CSV (e.g. <dataset>/manifests/nrrd.csv)",
+)
+@click.option(
+    "--root",
+    default=None,
+    type=click.Path(file_okay=False),
+    help="Dataset root that relative image/mask paths are resolved against",
+)
+@click.option(
+    "--where",
+    "wheres",
+    multiple=True,
+    help="Keep rows where COL=VALUE; VALUE may be a comma list (any of). Repeatable (all must hold).",
+)
+@click.option(
+    "--patients",
+    default=None,
+    help="Comma list of patient ids to keep (default: all)",
+)
+@click.option(
+    "--modality",
+    default=None,
+    help="Modality string written to every output row (default: keep the source value)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output manifest CSV (patient_id, modality, image_path, mask_path)",
+)
+def manifest_select(manifest, root, wheres, patients, modality, output):
+    """Filter a dataset manifest into the canonical extract manifest.
+
+    \b
+    Normalises id/image/mask column aliases (anon_pid, image_nrrd, mask_nrrd,
+    ...), resolves relative paths against --root, applies --where/--patients
+    and drops rows whose image or mask file is missing. This is the
+    cohort-level step of the per-cohort plans (nf-modules/cohorts/*.json).
+
+    \b
+    Example:
+        qr convert manifest-select -m /path/to/datasets/x/manifests/nrrd.csv \\
+          --root /path/to/datasets/x --where modality=preCT --modality CT \\
+          -o runs/x/manifest.csv
+    """
+    import pandas as pd
+
+    df = pd.read_csv(manifest, dtype=str)
+
+    def pick(names):
+        col = next((c for c in names if c in df.columns), None)
+        if col is None:
+            raise click.UsageError(f"manifest has none of the columns {list(names)}")
+        return col
+
+    for cond in wheres:
+        col, sep, val = cond.partition("=")
+        if not sep or col not in df.columns:
+            raise click.UsageError(
+                f"bad --where {cond!r} (need COL=VALUE with COL in the manifest)"
+            )
+        df = df[df[col].isin(val.split(","))]
+    pid, img, msk = pick(_ID_COLS), pick(_IMAGE_COLS), pick(_MASK_COLS)
+    if patients:
+        df = df[df[pid].isin(patients.split(","))]
+
+    def resolve(p):
+        return str(Path(root) / p) if root and not Path(p).is_absolute() else p
+
+    out = pd.DataFrame(
+        {
+            "patient_id": df[pid],
+            "modality": modality if modality else df.get("modality", "CT"),
+            "image_path": df[img].map(resolve),
+            "mask_path": df[msk].map(resolve),
+        }
+    ).dropna(subset=["patient_id", "image_path", "mask_path"])
+    present = out["image_path"].map(lambda p: Path(p).is_file()) & out["mask_path"].map(
+        lambda p: Path(p).is_file()
+    )
+    missing = int((~present).sum())
+    out = out[present]
+    if out.empty:
+        click.echo("No manifest rows left after selection", err=True)
+        raise SystemExit(1)
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(output, index=False)
+    click.echo(f"Wrote manifest with {len(out)} row(s) -> {output}")
+    if missing:
+        click.echo(f"  dropped {missing} row(s) with a missing image/mask file")
+
+
 @convert.command("fix-preamble")
 @click.option(
     "--input",
@@ -507,7 +653,28 @@ def fix_preamble(dicom_path):
     "good default on a workstation, scale up to nproc for batch "
     "conversion of large TCIA cohorts.",
 )
-def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existing, jobs):
+@click.option(
+    "--case",
+    "cases",
+    multiple=True,
+    help="Only convert rows whose case_id / patient_id equals this id (repeatable); "
+    "the output manifest then lists just those cases.",
+)
+@click.option(
+    "--only", default=None, help="Only this pair_id (pair manifest) / patient_id (legacy)."
+)
+@click.option("--only-case", default=None, help="Same as a single --case.")
+@click.option(
+    "--part",
+    type=click.Choice(["both", "image", "label"]),
+    default="both",
+    show_default=True,
+    help="[pair manifest] image = DICOM series -> NRRD per (case, image_key); label ="
+    " RTSTRUCT -> label NRRD per pair (needs the image part done first).",
+)
+def from_manifest_cmd(
+    manifest_path, nrrd_dir, roi, output_manifest, skip_existing, jobs, cases, only, only_case, part
+):
     """Batch-convert every (image_dir, rtstruct) row from an input manifest
     into an NRRD pair (image + ROI label), emitting a new manifest that
     points at the converted NRRDs.
@@ -530,6 +697,21 @@ def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existi
           --roi       GTV-1 \\
           --output    runs/lung1/manifest.csv
     """
+    from qradiomics import pairs as pm
+
+    df_in = pm.read_manifest(manifest_path)
+    if pm.is_pair_manifest(df_in):
+        _from_pair_manifest(
+            df_in, nrrd_dir, output_manifest, skip_existing, jobs, only, [*cases, only_case], part
+        )
+        return
+    if only or only_case or cases or str(manifest_path).endswith(".parquet"):
+        try:
+            df_in = pm.select_rows(df_in, only=only, only_case=only_case, cases=cases)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        manifest_path = str(Path(output_manifest).with_suffix(".in.csv"))
+        pm.write_manifest(df_in, manifest_path)
     # Reuse the already-tested `qr convert dicom-series` and `qr convert rtstruct`
     # CLI commands via subprocess. Lets this command stay a thin loop without
     # duplicating their internal entry points.
@@ -551,6 +733,8 @@ def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existi
             modality = row.get("modality") or "CT"
             image_path = row.get("image_path")
             mask_path = row.get("mask_path")
+            if cases and pid not in cases:
+                continue
             if pid and image_path and mask_path:
                 rows.append((pid, modality, image_path, mask_path))
 
@@ -656,3 +840,151 @@ def from_manifest_cmd(manifest_path, nrrd_dir, roi, output_manifest, skip_existi
         f"qr convert from-manifest: wrote {written} new + {skipped} cached "
         f"({failed} failed) → {out_path}  [jobs={jobs}]"
     )
+
+
+def _from_pair_manifest(df, nrrd_dir, output_manifest, skip_existing, jobs, only, cases, part):
+    """`convert from-manifest` for a pair manifest (one row per image x label pair).
+
+    image part: series_dir -> <nrrd-dir>/<case_id>/<image_key>.nrrd, once per
+                (case, image_key) however many pairs share it.
+    label part: RTSTRUCT -> <nrrd-dir>/<case_id>/<pair_id>_label.nrrd, drawn on the
+                case's CT series (see ct_ref below); the ROI is the
+                first of roi_candidates present (recorded as roi_used); none -> failure.
+    Output manifest columns: patient_id (= case_id), pair_id, modality (= image_key),
+    image_path, mask_path, roi_used, resample_mm -- the input of `qr preprocess`.
+    Only status=ok rows are converted. Exits 1 if any conversion fails (rows that
+    succeeded are still written), so a calling Nextflow task fails loudly.
+    """
+    import json
+    import subprocess
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    from qradiomics import pairs as pm
+
+    errs = pm.validate_pairs(df)
+    if errs:
+        raise click.ClickException("invalid pair manifest: " + "; ".join(errs[:5]))
+    # An RTSTRUCT references the CT it was drawn on. For a pair on another image (PT),
+    # the contour is rasterised on that case's CT series (same rtstruct_path) and
+    # `qr preprocess` resamples the label onto the image grid.
+    ct_ref = {
+        (r["case_id"], r["rtstruct_path"]): r["series_dir"]
+        for r in pm.ok_pairs(df).to_dict("records")
+        if r["image_key"] == "CT"
+    }
+    try:
+        df = pm.select_rows(df, only=only, cases=[c for c in cases if c])
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    df = pm.ok_pairs(df)
+    root = Path(nrrd_dir)
+
+    def image_path(r):
+        return root / r["case_id"] / f"{r['image_key']}.nrrd"
+
+    def label_path(r):
+        return root / r["case_id"] / f"{r['pair_id']}_label.nrrd"
+
+    def qr(*args):
+        return subprocess.run(
+            [sys.executable, "-m", "qradiomics.cli.main", *args], check=True, capture_output=True
+        )
+
+    def fail_text(e):
+        if isinstance(e, subprocess.CalledProcessError):
+            tail = (e.stderr or b"").decode(errors="replace").strip().splitlines()[-1:] or [""]
+            return f"exit {e.returncode}: {tail[0][-200:]}"
+        return f"{type(e).__name__}: {e}"
+
+    records = df.to_dict("records")
+    failures = []
+
+    def do_image(r):
+        out = image_path(r)
+        if skip_existing and out.is_file():
+            return None
+        out.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            qr("convert", "dicom-series", "--input", r["series_dir"], "--output", str(out))
+        except Exception as e:  # noqa: BLE001
+            return (r["case_id"], r["image_key"], fail_text(e))
+        return None
+
+    def do_label(r):
+        out, img = label_path(r), image_path(r)
+        if not img.is_file():
+            return r, None, f"image NRRD missing ({img.name}); run --part image first"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        rec_file = out.with_suffix(".roi.json")
+        if skip_existing and out.is_file() and rec_file.is_file():
+            return r, json.loads(rec_file.read_text())["roi_used"], None
+        try:
+            qr(
+                "convert", "rtstruct",
+                "--dicom-dir", ct_ref.get((r["case_id"], r["rtstruct_path"]), r["series_dir"]),
+                "--rtstruct", r["rtstruct_path"], "--roi-candidates", r["roi_candidates"],
+                "--roi-record", str(rec_file), "--output", str(out),
+            )  # fmt: skip
+            roi_used = json.loads(rec_file.read_text())["roi_used"]
+        except Exception as e:  # noqa: BLE001
+            return r, None, fail_text(e)
+        return r, roi_used, None
+
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+        if part in ("both", "image"):
+            seen, uniq = set(), []
+            for r in records:
+                key = (r["case_id"], r["image_key"])
+                if key not in seen:
+                    seen.add(key)
+                    uniq.append(r)
+            for res in ex.map(do_image, uniq):
+                if res:
+                    failures.append(f"image {res[0]}/{res[1]}: {res[2]}")
+        label_results = []
+        if part in ("both", "label"):
+            label_results = list(ex.map(do_label, records))
+    out_rows = []
+    if part == "image":
+        seen = set()
+        for r in records:
+            key = (r["case_id"], r["image_key"])
+            if key in seen or not image_path(r).is_file():
+                continue
+            seen.add(key)
+            out_rows.append(
+                {"patient_id": r["case_id"], "pair_id": "", "modality": r["image_key"],
+                 "image_path": str(image_path(r)), "mask_path": "", "roi_used": "",
+                 "resample_mm": r["resample_mm"]}
+            )  # fmt: skip
+    else:
+        for r, roi_used, err in label_results:
+            if err:
+                failures.append(f"pair {r['pair_id']}: {err}")
+                continue
+            out_rows.append(
+                {"patient_id": r["case_id"], "pair_id": r["pair_id"], "modality": r["image_key"],
+                 "image_path": str(image_path(r)), "mask_path": str(label_path(r)),
+                 "roi_used": roi_used, "resample_mm": r["resample_mm"]}
+            )  # fmt: skip
+    import pandas as pd
+
+    cols = [
+        "patient_id",
+        "pair_id",
+        "modality",
+        "image_path",
+        "mask_path",
+        "roi_used",
+        "resample_mm",
+    ]
+    pm.write_manifest(pd.DataFrame(out_rows, columns=cols), output_manifest)
+    click.echo(
+        f"qr convert from-manifest [{part}]: {len(out_rows)} row(s) ok, "
+        f"{len(failures)} failure(s) -> {output_manifest}"
+    )
+    for f in failures:
+        click.echo(f"  FAILED {f}", err=True)
+    if failures:
+        raise SystemExit(1)

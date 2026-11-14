@@ -207,6 +207,18 @@ def run_extraction() -> Dict[str, float]:
     return extract_features(image, mask, params_file=PARAMS_FILE, label=1)
 
 
+def _as_real(value) -> float:
+    """Coerce a PyRadiomics feature value to float.
+
+    Recent PyRadiomics builds under NumPy 2 can return a complex scalar with a
+    zero imaginary part; a non-zero imaginary part is a genuine failure (NaN).
+    """
+    c = complex(value)
+    if abs(c.imag) > 1e-9 * max(1.0, abs(c.real)):
+        return math.nan
+    return c.real
+
+
 def evaluate() -> dict:
     """Run extraction + comparison; return a structured result dict."""
     feats = run_extraction()
@@ -219,7 +231,7 @@ def evaluate() -> dict:
         pr_name, transform = FEATURE_MAP[tag]
         if pr_name not in feats:
             continue
-        ours_raw = transform(float(feats[pr_name]))
+        ours_raw = transform(_as_real(feats[pr_name]))
         ours = _ibsi_round(ours_raw)
         abs_diff = abs(ours - ref_val)
         ok = abs_diff <= tol

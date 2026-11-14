@@ -63,7 +63,9 @@ class TestResidualize:
         # make f0 strongly volume-dependent
         df = df.copy()
         df["volume"] = df["covar"] * 5 + np.random.default_rng(1).normal(0, 0.1, len(df))
-        df["f0"] = df["volume"] * 2 + 1.0
+        # Independent noise term: with an exact linear f0 the residual is pure
+        # float round-off, whose correlation with volume is meaningless.
+        df["f0"] = df["volume"] * 2 + 1.0 + np.random.default_rng(2).normal(0, 1.0, len(df))
         res = residualize_linear(df, ["f0"], ["volume"])
         r_after = abs(np.corrcoef(res.f0, res.volume)[0, 1])
         assert r_after < 0.1
@@ -82,6 +84,11 @@ class TestResidualize:
 
 
 class TestICC:
+    # pingouin ships with the optional `analytics` extra.
+    @pytest.fixture(autouse=True)
+    def _require_pingouin(self):
+        pytest.importorskip("pingouin")
+
     def test_identical_series_icc_one(self, synthetic_batched):
         df, fcols = synthetic_batched
         icc = feature_icc(df["f0"], df["f0"], df["PID"])

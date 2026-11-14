@@ -9,6 +9,7 @@
     "collection": "NSCLC-Cetuximab",
     "modalities": "CT,RTSTRUCT",
     "max_series": 0,
+    "case_manifest": "{outdir}/dicom_manifest.csv",
     "roi": "GTV-1",
     "pattern": "nsclc-survival",
     "task": "survival",
@@ -75,40 +76,42 @@
         "manifest": "{outdir}/dicom_manifest.csv",
         "nrrd-dir": "{nrrd_dir}",
         "roi": "{roi}",
-        "output": "{outdir}/manifest.csv"
+        "case": "{patient_id}",
+        "output": "{outdir}/cases/{patient_id}/manifest.csv"
       },
       "inputs": [
         "{outdir}/dicom_manifest.csv"
       ],
       "outputs": [
-        "{outdir}/manifest.csv"
+        "{outdir}/cases/{patient_id}/manifest.csv"
       ],
-      "per_patient": false
+      "per_patient": true
     },
     {
       "id": "extract",
       "cmd": "extract",
       "stage": "features",
       "args": {
-        "manifest": "{outdir}/manifest.csv",
+        "manifest": "{outdir}/cases/{patient_id}/manifest.csv",
         "pattern": "{pattern}",
-        "output": "{outdir}/features.csv",
+        "case": "{patient_id}",
+        "output": "{outdir}/cases/{patient_id}/features.csv",
         "engine": "{engine}"
       },
       "inputs": [
-        "{outdir}/manifest.csv"
+        "{outdir}/cases/{patient_id}/manifest.csv"
       ],
       "outputs": [
-        "{outdir}/features.csv"
+        "{outdir}/cases/{patient_id}/features.csv"
       ],
-      "per_patient": false
+      "per_patient": true
     },
     {
       "id": "merge",
       "cmd": "results merge",
       "stage": "features",
       "args": {
-        "features": "{outdir}/features.csv",
+        "features": "{outdir}/cases/*/features.csv",
         "clinical": "{clinical_csv}",
         "clinical-id-col": "patient_id",
         "time-col": "{time_col}",
@@ -116,7 +119,7 @@
         "output": "{outdir}/analysis_ready.csv"
       },
       "inputs": [
-        "{outdir}/features.csv",
+        "{outdir}/cases/*/features.csv",
         "{clinical_csv}"
       ],
       "outputs": [

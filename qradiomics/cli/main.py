@@ -19,6 +19,7 @@ from qradiomics.cli.commands import (
     preprocess,
     register,
     results,
+    select,
     shape,
     tcia,
     workflow,
@@ -64,6 +65,7 @@ cli.add_command(extract)
 cli.add_command(shape)
 cli.add_command(delta)
 cli.add_command(results)
+cli.add_command(select)
 cli.add_command(analyze)
 cli.add_command(lidc)
 cli.add_command(ml)

@@ -20,7 +20,6 @@ tcia download → DICOM→NRRD → manifest → extract → merge → ml train +
 <cohort>/
 ├── README.md           — what this pipeline does + how to run it
 ├── plan.json           — qr workflow plan (10 atomic steps)
-├── main.nf             — Nextflow workflow (scaffolded from plan.json)
 ├── nextflow.config     — executor profiles (local / docker / slurm)
 ├── prefect_flow.py     — Prefect 2.x flow (scaffolded from plan.json)
 ├── deploy.sh           — one-command deploy: install deps, fetch data, run
@@ -43,17 +42,17 @@ cd lung1/
 `deploy.sh` runs (in order):
 1. Install / upgrade `qradiomics`
 2. Verify `nextflow` is on PATH (downloads it locally otherwise)
-3. Run the pipeline via `nextflow run main.nf -profile local`
+3. Run the plan via `qr workflow run plan.json --executor nextflow` (the single
+   Nextflow entry point; no per-cohort `main.nf` is generated any more)
 
 ## Customising
 
 The `plan.json` is the single source of truth. To change ROI, pattern,
 analysis task, or output directory: edit `plan.json` (or regenerate it
 via `qr workflow plan -t tcia_to_ml --collection ... -o plan.json`),
-then re-scaffold the Nextflow + Prefect files:
+then re-scaffold the Prefect file (Nextflow runs `plan.json` directly):
 
 ```bash
-qr workflow scaffold -p plan.json -e nextflow -o main.nf
 qr workflow scaffold -p plan.json -e prefect  -o prefect_flow.py
 ```
 

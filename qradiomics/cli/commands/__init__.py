@@ -13,6 +13,7 @@ from .pacs import pacs
 from .preprocess import preprocess
 from .register import register
 from .results import results
+from .select_cmd import select
 from .shape import shape
 from .tcia import tcia
 from .workflow import workflow
@@ -31,6 +32,7 @@ __all__ = [
     "preprocess",
     "register",
     "results",
+    "select",
     "shape",
     "tcia",
     "workflow",

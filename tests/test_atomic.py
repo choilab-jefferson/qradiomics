@@ -24,6 +24,8 @@ Signatures (JLR-aligned, mirrored from qradiomics-dev):
   resample_to_fixed(fixed, moving, transform=None, *, interpolator, default_pixel_value)
     → sitk.Image
 """
+import importlib.util
+import os
 from pathlib import Path
 
 import numpy as np
@@ -125,6 +127,13 @@ class TestPreprocessPair:
 # ─── feature extraction ────────────────────────────────────────────────────
 
 
+needs_pyradiomics = pytest.mark.skipif(
+    importlib.util.find_spec("radiomics") is None,
+    reason="pyradiomics (optional extra) not installed",
+)
+
+
+@needs_pyradiomics
 class TestFeatureExtraction:
     def test_basic_extraction(self):
         img, msk = _sphere_image_and_mask()
@@ -193,13 +202,15 @@ class TestHUCorrection:
 
 # ─── integration with real local cohort (skip if absent) ─────────────────
 
-_PARITY_ROOT = Path("/path/to/parity_cases/case01")
+# Optional local cohort: point QR_PARITY_CASES_DIR at a directory holding parity_case/.
+_PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / "parity_case"
 
 
 @pytest.mark.skipif(
     not _PARITY_ROOT.exists(),
     reason="local cohort fixtures absent",
 )
+@needs_pyradiomics
 class TestIntegrationlocal:
     img_p = _PARITY_ROOT / "parity_case_planCT_cropped-1mm.nrrd"
     msk_p = _PARITY_ROOT / "parity_case_planCT_manual_cropped-1mm-label.nrrd"

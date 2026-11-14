@@ -140,12 +140,11 @@ qr workflow show plan.json                                   # inspect the steps
 # ... edit plan.json: swap vars.pattern, add a `shape extract` step, switch analyze→classify ...
 qr workflow run plan.json --executor inline --dry-run        # print exact commands, run nothing
 qr workflow run plan.json --executor nextflow                # default: per-patient parallel + cache + HPC
-qr workflow scaffold -p plan.json -e nextflow -o main.nf     # or commit a standalone Nextflow/shell file
 ```
 
 Executors: **nextflow** (default, production), **prefect** (secondary), **inline**
 (small-cohort, in-process). To ship a cohort as a deployable bundle, mirror
-`pipelines/lung1/` (`plan.json` + `main.nf` + `nextflow.config` + `deploy.sh`). The full
+`pipelines/lung1/` (`plan.json` + `nextflow.config` + `deploy.sh`). The full
 data model, editing patterns, and pipeline-directory recipe are in `references/workflows.md`.
 
 ## Test what you build

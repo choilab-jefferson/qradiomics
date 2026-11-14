@@ -1,21 +1,22 @@
 {
   "version": "0.9",
-  "name": "tcia_to_ml_classify",
-  "description": "TCIA download \u2192 DICOM \u2192 outcome-prediction ML model (5 stages).",
+  "name": "tcia_to_ml_survival",
+  "description": "TCIA \u2192 outcome-prediction ML model (8 steps, 4 canonical stages).",
   "vars": {
-    "cohort_root": "runs/acrin_heart/dicom",
-    "clinical_csv": "acrin_heart/clinical/clinical.csv",
     "outdir": "runs/acrin_heart",
     "nrrd_dir": "runs/acrin_heart/nrrd",
-    "roi": "Heart",
-    "pattern": "ct-default",
-    "task": "classify",
-    "outcome": "fdg_uptake_binary",
-    "time_col": "OS_days",
-    "event_col": "OS_event",
+    "clinical_csv": "pipelines/acrin_heart/clinical/clinical.csv",
     "collection": "ACRIN-NSCLC-FDG-PET",
     "modalities": "CT,RTSTRUCT",
-    "max_series": 0
+    "max_series": 0,
+    "case_manifest": "{outdir}/dicom_manifest.csv",
+    "roi": "Heart",
+    "pattern": "nsclc-survival",
+    "task": "survival",
+    "outcome": "OS_event",
+    "time_col": "OS_days",
+    "event_col": "OS_event",
+    "engine": "pyradiomics"
   },
   "steps": [
     {
@@ -50,85 +51,58 @@
       "per_patient": false
     },
     {
-      "id": "manifest_dicom",
-      "cmd": "convert manifest-from-dir",
+      "id": "tcia_manifest",
+      "cmd": "tcia manifest",
       "stage": "data",
       "args": {
-        "dataset-root": "{cohort_root}",
-        "image-glob": "**/CT",
-        "mask-glob": "**/RS.*.dcm",
+        "series": "{outdir}/series.csv",
+        "dicom-root": "{outdir}/dicom",
         "output": "{outdir}/dicom_manifest.csv"
       },
-      "inputs": [],
+      "inputs": [
+        "{outdir}/series.csv",
+        "{outdir}/dicom"
+      ],
       "outputs": [
         "{outdir}/dicom_manifest.csv"
       ],
       "per_patient": false
     },
     {
-      "id": "convert_ct",
-      "cmd": "convert dicom-series",
+      "id": "convert_from_manifest",
+      "cmd": "convert from-manifest",
       "stage": "image",
       "args": {
-        "input": "{cohort_root}/{patient_id}/CT",
-        "output": "{nrrd_dir}/{patient_id}_CT.nrrd"
-      },
-      "inputs": [],
-      "outputs": [
-        "{nrrd_dir}/{patient_id}_CT.nrrd"
-      ],
-      "per_patient": true
-    },
-    {
-      "id": "convert_rt",
-      "cmd": "convert rtstruct",
-      "stage": "image",
-      "args": {
-        "dicom-dir": "{cohort_root}/{patient_id}/CT",
-        "rtstruct": "{cohort_root}/{patient_id}/RTSeries/RS.dcm",
+        "manifest": "{outdir}/dicom_manifest.csv",
+        "nrrd-dir": "{nrrd_dir}",
         "roi": "{roi}",
-        "output": "{nrrd_dir}/{patient_id}_{roi}-label.nrrd"
+        "case": "{patient_id}",
+        "output": "{outdir}/cases/{patient_id}/manifest.csv"
       },
       "inputs": [
-        "{nrrd_dir}/{patient_id}_CT.nrrd"
+        "{outdir}/dicom_manifest.csv"
       ],
       "outputs": [
-        "{nrrd_dir}/{patient_id}_{roi}-label.nrrd"
+        "{outdir}/cases/{patient_id}/manifest.csv"
       ],
       "per_patient": true
-    },
-    {
-      "id": "manifest_nrrd",
-      "cmd": "convert manifest-from-dir",
-      "stage": "data",
-      "args": {
-        "dataset-root": "{nrrd_dir}",
-        "image-glob": "*_CT.nrrd",
-        "mask-glob": "*_{roi}-label.nrrd",
-        "output": "{outdir}/manifest.csv"
-      },
-      "inputs": [
-        "{nrrd_dir}"
-      ],
-      "outputs": [
-        "{outdir}/manifest.csv"
-      ],
-      "per_patient": false
     },
     {
       "id": "extract",
       "cmd": "extract",
       "stage": "features",
       "args": {
-        "manifest": "{outdir}/manifest.csv",
+        "manifest": "{outdir}/cases/{patient_id}/manifest.csv",
         "pattern": "{pattern}",
-        "output": "{outdir}/features.csv"
+        "case": "{patient_id}",
+        "output": "{outdir}/cases/{patient_id}/features.csv",
+        "engine": "{engine}"
       },
       "inputs": [
-        "{outdir}/manifest.csv"
+        "{outdir}/cases/{patient_id}/manifest.csv"
       ],
       "outputs": [
-        "{outdir}/features.csv"
+        "{outdir}/cases/{patient_id}/features.csv"
       ],
       "per_patient": true
     },
@@ -137,7 +111,7 @@
       "cmd": "results merge",
       "stage": "features",
       "args": {
-        "features": "{outdir}/features.csv",
+        "features": "{outdir}/cases/*/features.csv",
         "clinical": "{clinical_csv}",
         "clinical-id-col": "patient_id",
         "time-col": "{time_col}",
@@ -145,7 +119,7 @@
         "output": "{outdir}/analysis_ready.csv"
       },
       "inputs": [
-        "{outdir}/features.csv",
+        "{outdir}/cases/*/features.csv",
         "{clinical_csv}"
       ],
       "outputs": [

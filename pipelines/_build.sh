@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate every pipeline bundle (plan.json + main.nf + prefect_flow.py)
+# Regenerate every pipeline bundle (plan.json + prefect_flow.py)
 # from a single qr workflow plan invocation per cohort.
 #
 # Run from the qradiomics-public repo root:
@@ -29,7 +29,6 @@ build_one() {
         --output "$DIR/plan.json" \
         "$@"
 
-    "$QR" workflow scaffold -p "$DIR/plan.json" -e nextflow -o "$DIR/main.nf"
     "$QR" workflow scaffold -p "$DIR/plan.json" -e prefect  -o "$DIR/prefect_flow.py"
     cp ../examples/nextflow/nextflow.config "$DIR/nextflow.config"
 }
@@ -53,5 +52,5 @@ build_one acrin_heart tcia_to_ml \
 echo ""
 echo "Built bundles:"
 for d in lung1 nsclc_cetuximab lidc_idri acrin_heart; do
-    echo "  $d/{plan.json,main.nf,prefect_flow.py,nextflow.config}"
+    echo "  $d/{plan.json,prefect_flow.py,nextflow.config}"
 done

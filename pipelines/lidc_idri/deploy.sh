@@ -4,7 +4,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-pip install --upgrade --quiet qradiomics[rtstruct,prefect]
+# Canonical lab tracking endpoints (MLflow, Prefect). Caller can override.
+# shellcheck source=../_env.sh
+. ../_env.sh
+
+# Best-effort install: try full extras (dev), fall back to minimal (public).
+pip install --upgrade --quiet 'qradiomics[rtstruct,prefect,tracking]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics[rtstruct,prefect]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics[rtstruct]' 2>/dev/null \
+    || pip install --upgrade --quiet 'qradiomics'
 
 EXECUTOR="${EXECUTOR:-nextflow}"
 
@@ -14,7 +22,7 @@ if [ "$EXECUTOR" = "nextflow" ]; then
         curl -fsSL https://get.nextflow.io | bash
         export PATH="$PWD:$PATH"
     fi
-    nextflow run main.nf -profile local -resume
+    qr workflow run plan.json --executor nextflow --profile local --run-dir nf_run
 elif [ "$EXECUTOR" = "prefect" ]; then
     python prefect_flow.py
 else

@@ -7,7 +7,7 @@ Public-release modules (always available):
   ahsn         — Angular Histogram of Surface Normals descriptor  (2014 §2.3.1)
   wall_elim    — Iterative wall detection and elimination          (2014 §2.3.2)
   mesh_utils   — voxel → triangular mesh + geometry primitives    (2021)
-  spiculation  — Spherical parameterization, area distortion,     (2021)
+  spiculation  — cMCF spherical parameterization, area distortion,     (2021)
                  peak detection, classification (Na/Nl/Na_att/s1/s2)
   phantoms     — Synthetic 3D lung phantoms + geometric primitives
 
@@ -41,7 +41,17 @@ Without the overlay, those imports raise ImportError. Use
 from .ahsn import AHSNConfig, ahsn, find_tall_peak, normal_spherical
 from .detection import Candidate, detect_candidates, dot_value, extract_block, make_scales
 from .hessian import SurfaceElements, hessian_3d, hessian_eigendecomp, surface_elements
-from .mesh_utils import Mesh, face_areas, vertex_areas, voxel_to_mesh
+from .mesh_utils import (
+    Mesh,
+    cotangent_laplacian,
+    face_areas,
+    laplace_beltrami_bipartition,
+    mesh_roundness,
+    mesh_volume_and_area,
+    smooth_mesh_inverse_distance,
+    vertex_areas,
+    voxel_to_mesh,
+)
 from .phantoms import (
     ALL_PHANTOMS,
     SHAPE_PRIMITIVES,
@@ -57,13 +67,16 @@ from .spiculation import (
     ClassifyConfig,
     Peak,
     SpiculationFeatures,
+    angle_distortion,
     area_distortion,
     classify_peak,
     detect_peaks,
+    mobius_area_center,
     peaks_to_surfacelets,
     spherical_parameterization,
     spiculation_features,
     spiculation_from_voxel,
+    zscore_area_distortion,
 )
 from .contour_set import (
     CSET_GEO_COLS,
@@ -162,7 +175,12 @@ _PUBLIC_ALL: tuple[str, ...] = (
     "hessian_eigendecomp",
     "surface_elements",
     "Mesh",
+    "cotangent_laplacian",
     "face_areas",
+    "laplace_beltrami_bipartition",
+    "mesh_roundness",
+    "mesh_volume_and_area",
+    "smooth_mesh_inverse_distance",
     "vertex_areas",
     "voxel_to_mesh",
     "ALL_PHANTOMS",
@@ -177,13 +195,16 @@ _PUBLIC_ALL: tuple[str, ...] = (
     "ClassifyConfig",
     "Peak",
     "SpiculationFeatures",
+    "angle_distortion",
     "area_distortion",
     "classify_peak",
     "detect_peaks",
+    "mobius_area_center",
     "peaks_to_surfacelets",
     "spherical_parameterization",
     "spiculation_features",
     "spiculation_from_voxel",
+    "zscore_area_distortion",
     "wall_eliminate",
     # 3D solid-core remodeling & multi-target contour-set descriptors
     "BASE_SOLID_ARCH_COLS",

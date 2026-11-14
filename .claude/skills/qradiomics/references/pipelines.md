@@ -41,10 +41,11 @@ library (`qradiomics/workflow.py` → `LIBRARY`):
 | `dicom_to_ml` | DICOM cohort → full ML | `-d <cohort>` `-c clinical.csv` |
 | `tcia_to_ml` | TCIA collection → full ML | `-C <collection>` `-c clinical.csv` |
 
-A plan is a JSON/YAML list of ~10 atomic `qr` steps. `qr workflow scaffold` renders it
-to a runnable file per executor: **nextflow** (`main.nf`, default — per-patient parallel,
-cache, HPC via `nextflow.config` local/docker/slurm profiles), **prefect**
-(`prefect_flow.py`), or **shell**. `qr workflow run --executor inline` is the
+A plan is a JSON/YAML list of ~10 atomic `qr` steps. `qr workflow run plan.json
+--executor nextflow` is the single Nextflow entry point (packaged generic pipeline;
+per-patient parallel, cache, HPC via `--profile local|slurm`); no per-cohort `main.nf`
+is generated. `qr workflow scaffold` still renders **prefect** (`prefect_flow.py`) or
+**shell** files. `qr workflow run --executor inline` is the
 small-cohort fallback that runs steps in-process.
 
 ## The LIDC-IDRI / LUNGx reproducibility harness

@@ -127,6 +127,8 @@ def test_contract_and_volume_correlation_screen():
 
 
 def test_longitudinal_in_memory_rasterize_without_dicom_reread():
+    # qradiomics.longitudinal is dev-only (not in the public mirror).
+    pytest.importorskip("qradiomics.longitudinal.contours")
     from qradiomics.longitudinal.contours import RoiContours, rasterize
 
     outer = np.array([[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0]])

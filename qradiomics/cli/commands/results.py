@@ -1,9 +1,63 @@
 """Results commands — join features with clinical outcomes."""
 
+import glob
 from pathlib import Path
 
 import click
 import pandas as pd
+
+
+def _read_features(spec: str) -> pd.DataFrame:
+    """Read one features CSV, or concatenate a glob / comma-list of them (missing
+    pairs simply have no file). Header-only files are skipped."""
+    if not any(c in spec for c in "*?[,"):
+        if not Path(spec).exists():
+            click.echo(f"No features CSV matches '{spec}'", err=True)
+            raise SystemExit(1)
+        return pd.read_csv(spec)
+    files = sorted({f for part in spec.split(",") for f in glob.glob(part.strip())})
+    frames = [pd.read_csv(f, dtype={"patient_id": str, "pair_id": str}) for f in files]
+    frames = [f for f in frames if len(f)]
+    if not frames:
+        click.echo(f"No features CSV matches '{spec}'", err=True)
+        raise SystemExit(1)
+    click.echo(f"Read {len(frames)} feature file(s) from {spec}")
+    return pd.concat(frames, ignore_index=True)
+
+
+def _coverage_table(
+    pairs_manifest: str, feat_df: pd.DataFrame, merged: pd.DataFrame
+) -> pd.DataFrame:
+    """One row per manifest pair: did it reach the merged table, and if not why."""
+    from qradiomics import pairs as pm
+
+    man = pm.read_manifest(pairs_manifest)
+    have = set(feat_df["pair_id"].astype(str)) if "pair_id" in feat_df.columns else set()
+    done = set(merged["pair_id"].astype(str)) if "pair_id" in merged.columns else set()
+    rows = []
+    for r in man.to_dict("records"):
+        st = r.get("status", "")
+        if st != "ok":
+            outcome, reason = st or "unknown", r.get("reason", "")
+        elif r["pair_id"] in done:
+            outcome, reason = "merged", ""
+        elif r["pair_id"] in have:
+            outcome, reason = "no_clinical", "features present, no clinical row / outcome"
+        else:
+            outcome, reason = "missing_features", "no features produced (task failed or not run)"
+        rows.append(
+            {
+                "cohort": r.get("cohort", ""),
+                "case_id": r.get("case_id", ""),
+                "pair_id": r["pair_id"],
+                "image_key": r.get("image_key", ""),
+                "label_key": r.get("label_key", ""),
+                "manifest_status": st,
+                "outcome": outcome,
+                "reason": reason,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 @click.group()
@@ -16,8 +70,10 @@ def results():
     "--features",
     "-f",
     required=True,
-    type=click.Path(exists=True),
-    help="Path to features.csv (from qr extract)",
+    type=click.Path(),
+    help="Path to features.csv (from qr extract), or a glob such as "
+    "'runs/x/cases/*/features.csv' (quote it) or a comma-list of files, whose "
+    "matches are concatenated (per-case / per-pair extract outputs).",
 )
 @click.option(
     "--clinical",
@@ -54,13 +110,37 @@ def results():
     "clinical CSV.",
 )
 @click.option(
+    "--pairs",
+    "pairs_manifest",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Pair manifest (qr select validate). Missing pairs are tolerated; with"
+    " --coverage every manifest pair is listed with its outcome.",
+)
+@click.option(
+    "--coverage",
+    type=click.Path(),
+    default=None,
+    help="Write the per-pair coverage table here (.parquet or .csv); needs --pairs.",
+)
+@click.option(
     "--output",
     "-o",
     required=True,
     type=click.Path(),
     help="Output path for analysis_ready.csv",
 )
-def merge(features, clinical, clinical_id_col, time_col, event_col, outcome_col, output):
+def merge(
+    features,
+    clinical,
+    clinical_id_col,
+    time_col,
+    event_col,
+    outcome_col,
+    pairs_manifest,
+    coverage,
+    output,
+):
     """Merge radiomics features with clinical outcome data on patient_id.
 
     \b
@@ -74,7 +154,9 @@ def merge(features, clinical, clinical_id_col, time_col, event_col, outcome_col,
     --outcome-col) are kept — every other clinical column is dropped, so
     an unrelated column never silently leaks into training as a feature.
     """
-    feat_df = pd.read_csv(features)
+    if coverage and not pairs_manifest:
+        raise click.UsageError("--coverage needs --pairs")
+    feat_df = _read_features(features)
     clin_df = pd.read_csv(clinical)
 
     if "patient_id" not in feat_df.columns:
@@ -87,6 +169,8 @@ def merge(features, clinical, clinical_id_col, time_col, event_col, outcome_col,
 
     if clinical_id_col != "patient_id":
         clin_df = clin_df.rename(columns={clinical_id_col: "patient_id"})
+    if feat_df["patient_id"].dtype == object:  # string ids (glob path): join on text
+        clin_df["patient_id"] = clin_df["patient_id"].astype(str)
 
     time_present = time_col in clin_df.columns
     event_present = event_col in clin_df.columns
@@ -137,6 +221,17 @@ def merge(features, clinical, clinical_id_col, time_col, event_col, outcome_col,
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output, index=False)
     click.echo(f"Merged {len(merged)} patients, {len(merged.columns)} columns -> {output}")
+    if pairs_manifest:
+        cov = _coverage_table(pairs_manifest, feat_df, merged)
+        counts = cov["outcome"].value_counts().to_dict()
+        click.echo("Coverage: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+        for _, r in cov[cov["outcome"] != "merged"].iterrows():
+            click.echo(f"  not merged: {r['pair_id']} ({r['outcome']}: {r['reason']})")
+        if coverage:
+            from qradiomics.pairs import write_manifest
+
+            write_manifest(cov, coverage)
+            click.echo(f"Coverage table -> {coverage}")
 
 
 @results.command()
@@ -230,11 +325,7 @@ def sanitize(
     """
     import numpy as np
 
-    from qradiomics.analytics import (
-        combat_harmonize,
-        icc_filter,
-        residualize_linear,
-    )
+    from qradiomics.analytics import combat_harmonize, icc_filter, residualize_linear
 
     df = pd.read_csv(input_csv)
     conf = [c.strip() for c in confounders.split(",") if c.strip()]

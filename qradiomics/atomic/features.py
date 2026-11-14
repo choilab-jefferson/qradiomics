@@ -32,6 +32,8 @@ def extract_features(
     label: int = 1,
     geometry_tolerance: float = _DEFAULT_GEOMETRY_TOLERANCE,
     include_diagnostics: bool = False,
+    pre_crop: bool = True,
+    pad_distance: int = 10,
 ) -> Dict[str, Any]:
     """Run PyRadiomics on one (image, mask) pair and return a flat feature dict.
 
@@ -49,6 +51,11 @@ def extract_features(
         geometry_tolerance: ``geometryTolerance`` setting passed to PyRadiomics.
         include_diagnostics: When False (default), strip keys starting with
             ``diagnostics_`` from the returned dict.
+        pre_crop: When True (default) and ``params_file`` does not override
+            ``preCrop``, crop image and mask to the mask bounding box plus
+            ``pad_distance`` voxels prior to 3D filtering (Wavelet, LoG, etc.).
+        pad_distance: Padding margin in voxels around the mask bounding box when
+            ``pre_crop`` is enabled (default 10 voxels).
 
     Returns:
         ``{feature_name: value}`` with all values coerced to native Python
@@ -69,6 +76,9 @@ def extract_features(
         extractor = featureextractor.RadiomicsFeatureExtractor()
         extractor.enableAllImageTypes()
         extractor.enableAllFeatures()
+        if pre_crop:
+            extractor.settings["preCrop"] = True
+            extractor.settings["padDistance"] = int(pad_distance)
 
     extractor.settings["geometryTolerance"] = geometry_tolerance
 

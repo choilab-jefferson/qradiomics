@@ -46,6 +46,7 @@ the executor loop is spelled):
 from __future__ import annotations
 
 import csv
+import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -53,6 +54,35 @@ from typing import Any, Callable, Union
 
 Row = dict
 WorkerResult = Union[Row, "list[Row]", None]
+
+
+def _init_single_thread_worker() -> None:
+    """Pin each worker subprocess to 1 native ITK / BLAS / OpenMP thread to
+    prevent multiplicative thread oversubscription (workers x ITK threads)."""
+    for env_key in (
+        "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS",
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        os.environ[env_key] = "1"
+    try:
+        import SimpleITK as sitk  # noqa: PLC0415
+
+        sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(1)
+    except Exception:
+        pass
+
+
+def default_jobs(fallback: int = 4) -> int:
+    """Return a safe default worker count bounded by physical core count."""
+    env_override = os.environ.get("QRADIOMICS_DEFAULT_JOBS")
+    if env_override and env_override.isdigit():
+        return max(1, int(env_override))
+    cpu = os.cpu_count() or 2
+    return max(1, min(fallback, cpu // 2))
 
 
 def run_parallel_rows(
@@ -120,7 +150,9 @@ def run_parallel_rows(
 
     all_rows: "list[Row]" = []
     ok = fail = 0
-    with ProcessPoolExecutor(max_workers=jobs) as ex:
+    with ProcessPoolExecutor(
+        max_workers=max(1, int(jobs)), initializer=_init_single_thread_worker
+    ) as ex:
         futs = {ex.submit(worker, w): _key_fn(w) for w in work}
         for fut in as_completed(futs):
             key = futs[fut]

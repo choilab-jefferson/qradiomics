@@ -124,5 +124,8 @@ def test_top_level_models_still_works():
 def test_top_level_help_lists_all_groups():
     result = _invoke("--help")
     assert result.exit_code == 0, result.output
-    for name in ("anonymize", "models", "ml", "private"):
+    groups = ["anonymize", "models", "ml"]
+    if _PRIVATE_OVERLAY_INSTALLED:
+        groups.append("private")
+    for name in groups:
         assert name in result.output, f"'{name}' missing from `qr --help`"

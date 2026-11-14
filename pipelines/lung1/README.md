@@ -70,6 +70,5 @@ If you already have the DICOM tree on disk, regenerate the plan with
 qr workflow plan -t dicom_to_ml -d /path/to/lung1/dicom \
     -c clinical/clinical.csv --roi GTV-1 --pattern nsclc-survival \
     -o plan.json
-qr workflow scaffold -p plan.json -e nextflow -o main.nf
 ./deploy.sh
 ```

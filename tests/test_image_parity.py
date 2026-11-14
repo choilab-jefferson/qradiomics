@@ -1,4 +1,5 @@
 """Tests for qradiomics.verification.image_parity — for Stage 3b sweeps."""
+import os
 from pathlib import Path
 
 import pytest
@@ -60,7 +61,7 @@ class TestCompareImagePair:
         assert diffs["mask"].is_identical
 
 
-_PARITY_ROOT = Path("/path/to/parity_cases")
+_PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent"))
 
 
 @pytest.mark.skipif(
