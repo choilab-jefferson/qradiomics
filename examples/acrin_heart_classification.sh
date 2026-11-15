@@ -7,7 +7,8 @@
 #           Per-patient RTSTRUCT (auto or manual) → qr convert rtstruct
 #           --roi Heart (case-insensitive: matches 'Heart' or 'heart')
 #           → label NRRD aligned with the CT geometry → manifest → qr extract
-#           with `ct-default` (1409 features per patient) → merge with the
+#           with `ct-default` (native rtools engine: ~97 features per
+#           patient; ENGINE=pyradiomics gives the 1409-feature set) → merge with the
 #           supplied clinical CSV → univariate logistic regression
 #           classification on a binary outcome.
 # =============================================================================
@@ -17,6 +18,7 @@ DATASET_ROOT="${DATASET_ROOT:?set DATASET_ROOT to the ACRIN TCIA directory}"
 CLINICAL_CSV="${CLINICAL_CSV:?set CLINICAL_CSV to the ACRIN clinical CSV}"
 OUTCOME="${OUTCOME:-fdg_uptake_binary}"
 OUT="${OUT:-./runs/acrin}"
+ENGINE="${ENGINE:-rtools}"   # native default; ENGINE=pyradiomics for the full PyRadiomics set (needs pyradiomics from git)
 
 NRRD_DIR="$OUT/nrrd"
 mkdir -p "$NRRD_DIR"
@@ -52,8 +54,9 @@ done
 qr extract \
   -m "$OUT/manifest.csv" \
   -p ct-default \
+  --engine "$ENGINE" \
   -o "$OUT/features.csv"
-# → ~1409 features per patient
+# → ~97 features per patient (rtools); ~1409 with ENGINE=pyradiomics
 
 # ─── 4. Merge with clinical (clinical CSV must contain patient_id + $OUTCOME) ─
 qr results merge \
@@ -77,5 +80,5 @@ qr analyze classify \
 echo ""
 echo "Done. Outputs in $OUT/:"
 echo "  nrrd/                 *_preCT.nrrd + *_Heart-label.nrrd"
-echo "  features.csv          patients × ~1409 features"
+echo "  features.csv          patients × features ($ENGINE engine)"
 echo "  classify_results.csv  univariate logistic regression, ranked by p"

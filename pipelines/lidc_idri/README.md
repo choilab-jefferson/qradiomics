@@ -26,6 +26,15 @@ qr workflow plan -t dicom_to_ml -d runs/lidc_idri/nrrd \
 ./deploy.sh
 ```
 
+## Engine
+
+`plan.json` sets `"engine": "rtools"` (native, ~97 features per nodule). The
+paper-reproduction scripts (`reproduce_papers.py`, `methods_compare.py`) expect
+pyradiomics column names (`original_shape_*`, `original_firstorder_*`, ...), so
+extract with `python pipelines/lidc_idri/extract_features.py --engine pyradiomics`
+(and set `"engine": "pyradiomics"` in the plan) to reproduce them. Needs
+`pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"`.
+
 ## Cohort details
 
 - TCIA collection: https://www.cancerimagingarchive.net/collection/lidc-idri/

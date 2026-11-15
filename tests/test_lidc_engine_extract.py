@@ -37,18 +37,37 @@ def _tiny_ct_mask():
     return ct, mask
 
 
-def test_default_engine_resolves_to_pyradiomics_only():
-    assert resolve_engines(None) == ["pyradiomics"]
+def test_default_engine_resolves_to_rtools():
+    assert resolve_engines(None) == ["rtools"]
+    assert resolve_engines("pyradiomics") == ["pyradiomics"]
 
 
-def test_pyradiomics_only_calls_extract_features_directly():
+def test_default_engine_routes_through_registry_not_atomic():
+    """engine=None uses the registry default (rtools); atomic.extract_features is not touched."""
+    ct, mask = _tiny_ct_mask()
+
+    def fake_run_multi(engines, job_id, manifest_path, job_dir, extraction_settings, jobs=1):
+        assert engines == ["rtools"]
+        pd.DataFrame([{"patient_id": "row", "f": 2.0}]).to_csv(job_dir / "features.csv", index=False)
+        return {"status": "extracted"}
+
+    with patch.object(engine_extract, "extract_features") as mock_extract, patch.object(
+        engine_extract, "run_multi_extraction", side_effect=fake_run_multi
+    ):
+        result = engine_extract.extract_features_multi(ct, mask, engine=None)
+
+    mock_extract.assert_not_called()
+    assert result == {"f": 2.0}
+
+
+def test_explicit_pyradiomics_calls_extract_features_directly():
     ct, mask = _tiny_ct_mask()
     fake_features = {"original_firstorder_Mean": 1.0}
 
     with patch.object(
         engine_extract, "extract_features", return_value=fake_features
     ) as mock_extract, patch.object(engine_extract, "run_multi_extraction") as mock_multi:
-        result = engine_extract.extract_features_multi(ct, mask, engine=None)
+        result = engine_extract.extract_features_multi(ct, mask, engine="pyradiomics")
 
     mock_extract.assert_called_once()
     mock_multi.assert_not_called()

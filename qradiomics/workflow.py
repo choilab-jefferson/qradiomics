@@ -131,6 +131,29 @@ class WorkflowPlan:
 # one of these and can add/remove/reorder steps before running.
 
 
+def _plan_engine(engine: Optional[str], pattern: str) -> str:
+    """Engine spec for a plan's extract step.
+
+    An explicit ``engine`` wins. Otherwise follow the pattern's configured
+    extractor (shipped patterns name pyradiomics; a pattern that names none
+    gets the native rtools default), falling back to ``DEFAULT_ENGINE`` when
+    the pattern cannot be loaded.
+    """
+    from qradiomics.extractor_registry import DEFAULT_ENGINE
+
+    if engine:
+        return engine
+    try:
+        from qradiomics.pattern_loader import PatternLoader
+
+        tmpl = PatternLoader().get_pattern(pattern)
+        if tmpl is not None:
+            return tmpl.feature_extraction.engine_spec
+    except Exception:  # noqa: BLE001 - plan generation must not fail on pattern lookup
+        log.debug("could not load pattern %r for engine default", pattern, exc_info=True)
+    return DEFAULT_ENGINE
+
+
 CASE_FEATURES = "{outdir}/cases/{patient_id}/features.csv"
 CASE_FEATURES_GLOB = "{outdir}/cases/*/features.csv"
 
@@ -161,7 +184,7 @@ def template_nrrd_survival(
     time_col: str = "OS_days",
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
 ) -> WorkflowPlan:
     """Cohort already in NRRD form. Manifest -> per-case extract -> merge -> survival."""
     plan = _nrrd_survival_base(**locals())
@@ -177,7 +200,7 @@ def _nrrd_survival_base(
     time_col: str = "OS_days",
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
 ) -> WorkflowPlan:
     """Shared body of the NRRD templates; extract is cohort-level here."""
     return WorkflowPlan(
@@ -190,7 +213,7 @@ def _nrrd_survival_base(
             "image_glob": image_glob,
             "mask_glob": mask_glob,
             "pattern": pattern,
-            "engine": engine,
+            "engine": _plan_engine(engine, pattern),
             "time_col": time_col,
             "event_col": event_col,
         },
@@ -263,7 +286,7 @@ def template_dicom_to_ml(
     time_col: str = "OS_days",
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
 ) -> WorkflowPlan:
     """Full DICOM → outcome-prediction ML model workflow (4 canonical stages).
 
@@ -286,7 +309,7 @@ def template_dicom_to_ml(
             "nrrd_dir": f"{outdir}/nrrd",
             "roi": roi,
             "pattern": pattern,
-            "engine": engine,
+            "engine": _plan_engine(engine, pattern),
             "task": task,
             "outcome": outcome,
             "time_col": time_col,
@@ -413,7 +436,7 @@ def template_dicom_survival(
     roi: str = "GTV",
     pattern: str = "nsclc-survival",
     outdir: str = "runs/cohort",
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
 ) -> WorkflowPlan:
     """Cohort ships as DICOM + RTSTRUCT. Adds per-patient convert steps.
 
@@ -538,7 +561,7 @@ def template_tcia_to_ml(
     event_col: str = "OS_event",
     outdir: str = "runs/cohort",
     max_series: int = 0,
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
 ) -> WorkflowPlan:
     """Full TCIA → outcome-prediction ML model workflow (8 steps).
 
@@ -579,7 +602,7 @@ def template_tcia_to_ml(
             "outcome": outcome,
             "time_col": time_col,
             "event_col": event_col,
-            "engine": engine,
+            "engine": _plan_engine(engine, pattern),
         },
         steps=[
             # ── Stage 1: data ────────────────────────────────────────────────
@@ -702,7 +725,7 @@ def template_rt_pair_radiomics(
     clinical_csv: str,
     pattern: str = "nsclc-survival",
     outdir: str = "runs/pairs",
-    engine: str = "pyradiomics",
+    engine: Optional[str] = None,
     pad_mm: float = 20.0,
     time_col: str = "OS_days",
     event_col: str = "OS_event",
@@ -726,7 +749,7 @@ def template_rt_pair_radiomics(
             "outdir": outdir,
             "nrrd_dir": f"{outdir}/nrrd",
             "pattern": pattern,
-            "engine": engine,
+            "engine": _plan_engine(engine, pattern),
             "pad_mm": pad_mm,
             "time_col": time_col,
             "event_col": event_col,

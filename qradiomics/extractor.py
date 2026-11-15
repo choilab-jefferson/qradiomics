@@ -20,11 +20,23 @@ logger = logging.getLogger(__name__)
 
 # pyradiomics is an optional extra (see pyproject.toml). It cannot be installed
 # from PyPI on Python 3.10+, so point at the git install rather than at the
-# extra name, which would not resolve either.
+# extra name, which would not resolve either. The native ``rtools`` engine is
+# the default and needs no pyradiomics.
 PYRADIOMICS_INSTALL_HINT = (
     "pyradiomics is an optional dependency and is not installed. Install it with: "
-    'pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"'
+    'pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git" '
+    "-- or use the native engine, which needs no pyradiomics: --engine rtools"
 )
+
+
+def pyradiomics_available() -> bool:
+    """True if the optional ``radiomics`` (pyradiomics) package is importable."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("radiomics") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 class RadiomicsExtractor:

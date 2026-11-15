@@ -3,7 +3,7 @@
 JLR's ADR-005 stage 3a swept qradiomics.atomic.extract_features against
 its legacy `_extract_features_for_roi` across 24 real cohort cases and
 got 0/1409 feature diffs. This file pins the qradiomics output for
-parity_case (one of those cases) as a golden reference so any future
+one of those cases as a golden reference so any future
 change here that perturbs the extractor output fails CI before it
 ships and re-invalidates the JLR parity contract.
 
@@ -32,12 +32,18 @@ def golden():
 
 
 @pytest.mark.skipif(
-    not (Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / "parity_case").exists(),
-    reason="parity_case cohort data absent — parity check skipped",
+    not (os.environ.get("QR_PARITY_CASE")
+         and (Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / os.environ["QR_PARITY_CASE"]).exists()),
+    reason="QR_PARITY_CASES_DIR / QR_PARITY_CASE unset or absent — parity check skipped",
 )
 class TestJLRParityGolden:
     def test_byte_identical_features(self, golden):
-        img, msk = load_image_and_mask(golden["image_path"], golden["mask_path"])
+        case = os.environ["QR_PARITY_CASE"]
+        cdir = Path(os.environ["QR_PARITY_CASES_DIR"]) / case
+        img, msk = load_image_and_mask(
+            cdir / f"{case}_planCT_cropped-1mm.nrrd",
+            cdir / f"{case}_planCT_manual_cropped-1mm-label.nrrd",
+        )
         feats = extract_features(img, msk)
         expected = golden["features"]
 

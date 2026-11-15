@@ -11,7 +11,7 @@
 #           (any tool that voxelises the XML annotations works — for
 #           example pylidc or a STAPLE consensus of the four readers).
 #
-#           features come from `ct-default` (1409 features per nodule)
+#           features come from `ct-default` (rtools: ~97 per nodule; ENGINE=pyradiomics: 1409)
 #           plus, optionally, the AHSN shape descriptor (180-dim,
 #           qradiomics.shape, 2014 CMPB) as a sidecar feature column.
 # =============================================================================
@@ -21,6 +21,7 @@ DATASET_ROOT="${DATASET_ROOT:?set DATASET_ROOT to the LIDC-IDRI DICOM root}"
 LABEL_DIR="${LABEL_DIR:?set LABEL_DIR to the directory holding <patient_id>_nodule-label.nrrd}"
 CLINICAL_CSV="${CLINICAL_CSV:-}"  # optional — e.g. malignancy score CSV
 OUT="${OUT:-./runs/lidc}"
+ENGINE="${ENGINE:-rtools}"   # native default; ENGINE=pyradiomics for the full PyRadiomics set (needs pyradiomics from git)
 
 NRRD_DIR="$OUT/nrrd"
 mkdir -p "$NRRD_DIR"
@@ -47,8 +48,8 @@ done
     done
 } > "$OUT/manifest.csv"
 
-# ─── 3. PyRadiomics features ─────────────────────────────────────────────────
-qr extract -m "$OUT/manifest.csv" -p ct-default -o "$OUT/features.csv"
+# ─── 3. Radiomics features (rtools default; ENGINE=pyradiomics for 1409) ─────────────────────────────────────────────────
+qr extract -m "$OUT/manifest.csv" -p ct-default --engine "$ENGINE" -o "$OUT/features.csv"
 
 # ─── 4. (Optional) AHSN 180-dim shape descriptor ─────────────────────────────
 # Available in qradiomics.shape (CMPB 2014). Uncomment to compute alongside
@@ -88,5 +89,5 @@ echo ""
 echo "Done. Outputs in $OUT/:"
 echo "  nrrd/                 *_CT.nrrd"
 echo "  manifest.csv          patient_id + image + mask"
-echo "  features.csv          patients × ~1409 features"
+echo "  features.csv          patients × features ($ENGINE engine)"
 echo "  classify_results.csv  (if CLINICAL_CSV was set)"

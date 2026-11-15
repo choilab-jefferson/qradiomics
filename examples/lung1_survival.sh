@@ -5,9 +5,10 @@
 # Cohort  : https://www.cancerimagingarchive.net/collection/nsclc-radiomics/
 # Paper   : Aerts HJWL et al., Nature Communications 2014.
 # Pipeline: TCIA-shipped NRRD (or convert from DICOM) → qr extract
-#           with the bundled `nsclc-survival` pattern (1130 features per
-#           patient with Original + LoG + Wavelet + Square + SquareRoot +
-#           Logarithm × 7 feature classes) → merge with the clinical CSV
+#           with the bundled `nsclc-survival` pattern. Default engine rtools:
+#           ~97 Original-image features per patient. ENGINE=pyradiomics
+#           reproduces the Aerts set (1130 features: Original + LoG +
+#           Wavelet + Square + SquareRoot + Logarithm × 7 feature classes) → merge with the clinical CSV
 #           on patient_id → univariate Cox PH on overall survival.
 # =============================================================================
 set -euo pipefail
@@ -15,6 +16,7 @@ set -euo pipefail
 DATASET_ROOT="${DATASET_ROOT:?set DATASET_ROOT to the LUNG1 TCIA directory}"
 CLINICAL_CSV="${CLINICAL_CSV:?set CLINICAL_CSV to the LUNG1 clinical CSV}"
 OUT="${OUT:-./runs/lung1}"
+ENGINE="${ENGINE:-rtools}"   # native default; ENGINE=pyradiomics for the full PyRadiomics set (needs pyradiomics from git)
 
 mkdir -p "$OUT"
 
@@ -32,8 +34,9 @@ qr convert manifest-from-dir \
 qr extract \
   -m "$OUT/manifest.csv" \
   -p nsclc-survival \
+  --engine "$ENGINE" \
   -o "$OUT/features.csv"
-# → ~1130 features per patient
+# → ~97 features per patient (rtools); ~1130 with ENGINE=pyradiomics
 
 # ─── 3. Merge with clinical OS data on patient_id ────────────────────────────
 qr results merge \
@@ -54,6 +57,6 @@ qr analyze survival \
 echo ""
 echo "Done. Outputs in $OUT/:"
 echo "  manifest.csv          patients × {patient_id, modality, image_path, mask_path}"
-echo "  features.csv          patients × ~1130 PyRadiomics features"
+echo "  features.csv          patients × features ($ENGINE engine; ~1130 pyradiomics)"
 echo "  analysis_ready.csv    merged features + OS_months + OS_event"
 echo "  cox_results.csv       univariate Cox PH (feature, HR, CI, p) ranked by p"

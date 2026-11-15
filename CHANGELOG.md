@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.9.9 (2026-11-14)
+
+- **Behaviour change: `rtools` is now the default extraction engine everywhere** (#28).
+  pyradiomics cannot be installed from PyPI on Python 3.10+, so a plain
+  `pip install qradiomics` failed on the first `qr extract`. `qr extract` without
+  `--engine` now runs the native `rtools` engine, and so do all shipped defaults:
+  - `qradiomics.extractor_registry.DEFAULT_ENGINE`, `FeatureExtractionConfig.extractor`
+    and `pattern_schema.yaml` default to `rtools`.
+  - The 5 shipped patterns (`ct-default`, `pet-default`, `nsclc-survival`,
+    `standard-radiomics`, `survival-analysis`) now set `extractor: rtools`.
+  - `pipelines/{acrin_heart,lidc_idri,lung1,nsclc_cetuximab}/plan.json` and
+    `nf-modules/cohorts/*.json` set `"engine": "rtools"`; `qr workflow plan --engine`
+    and the template `engine` parameters default to the pattern's extractor (rtools).
+  - `pipelines/common/engine_extract.extract_features_multi` (LIDC scripts) routes
+    `engine=None` through the registry (rtools); only `engine="pyradiomics"` calls
+    `qradiomics.atomic.extract_features`. `pipelines/run_cohort_nf.sh` and the
+    `examples/*.sh` scripts take an `ENGINE` variable (default `rtools`).
+  - `qradiomics.atomic.extract_features` is unchanged: an explicit pyradiomics
+    primitive that no CLI or workflow default path routes to.
+- **What rtools does not reproduce.** rtools computes Original-image 2D/3D intensity,
+  shape and GLCM/GLRLM features (97 per patient, radiomics-tools feature names). It
+  does not compute filtered images (LoG, Wavelet, Square, SquareRoot, Logarithm,
+  Exponential, Gradient, LBP) or the GLSZM/GLDM/NGTDM classes, does not apply
+  pyradiomics settings (`binWidth`, resampling, `normalize`, `preCrop`, a params YAML)
+  or the pattern's `image_types` / `feature_classes`, and does not emit `original_*` /
+  `wavelet-*` feature names. Feature values differ from pyradiomics even for
+  overlapping classes, so do not mix features from the two engines in one analysis.
+  `qr extract` prints a note on stderr when rtools ignores pattern settings.
+- **Keeping the old pyradiomics behaviour** is one flag: `qr extract ... --engine
+  pyradiomics` (install it first:
+  `pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"`).
+  The pyradiomics-only settings stay in the shipped patterns and
+  `qradiomics/data/pyradiomics/*.yaml` and are applied by that engine. Examples:
+  Aerts / Lung1 (`qr extract -p nsclc-survival --engine pyradiomics`, ~1130
+  features), the 1409-feature `ct-default` set, and the LIDC paper reproductions
+  (`extract_features.py --engine pyradiomics`). For the cohort plans set
+  `"engine": "pyradiomics"` in the plan `vars` or regenerate with
+  `qr workflow plan --engine pyradiomics`; for the examples and
+  `run_cohort_nf.sh` set `ENGINE=pyradiomics`.
+- If pyradiomics is requested (by `--engine` or by a pattern) but not installed,
+  `qr extract` now stops up front with the git install command and a suggestion to
+  use `--engine rtools`.
+- **Colab notebooks** (#28): `examples/ibsi1_phantom_colab.ipynb` (IBSI-1 digital phantom)
+  and `examples/lung1_survival_colab.ipynb` (TCIA NSCLC-Radiomics subset) run in Google
+  Colab with `pip install qradiomics` only; `examples/README.md` links them and the
+  agent-driven nexus.lite demo notebook.
+- **Agent skill refresh**: `.claude/skills/qradiomics` and `.agents/skills/qradiomics`
+  describe the rtools-default workflow (PyRadiomics optional).
+
 ## v0.9.8 (2026-11-14)
 
 - **Generic Nextflow backend for `qr workflow run`** (#24, #25):

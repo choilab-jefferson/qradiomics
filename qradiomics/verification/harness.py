@@ -111,7 +111,7 @@ def run_ab_sweep(
         legacy: the reference implementation.
         candidate: the new (qradiomics.atomic) implementation under test.
         out_dir: directory for per_case_summary.csv + feature_diffs.csv.
-        abs_tol, rel_tol: tolerance per feature; default matches parity_case
+        abs_tol, rel_tol: tolerance per feature; default matches the parity
             golden (1e-9, same as ADR-005 stage-3a verification).
         case_id_col, image_col, mask_col: manifest column names.
         limit: optional max cases to process (useful for smoke runs).

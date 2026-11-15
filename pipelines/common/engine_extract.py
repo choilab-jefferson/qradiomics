@@ -5,23 +5,24 @@ per (image, mask) pair, inside their own per-patient/per-nodule worker
 functions -- there is no manifest CSV, since masks are rasterised or
 region-grown in memory. ``qradiomics.extractor_registry.run_multi_extraction``
 (used by ``qr extract --engine``) instead expects a manifest CSV of on-disk
-image/mask paths. ``extract_features_multi`` bridges the two: the default
-(pyradiomics-only) path is an untouched passthrough to
-``qradiomics.atomic.extract_features`` -- byte-identical to every
-lidc_idri script's pre-existing behaviour -- and any other resolved engine
-list writes the pair to a scratch one-row manifest and routes through
-``run_multi_extraction``, mirroring ``qradiomics/cli/commands/extract.py``'s
-implementation pattern.
+image/mask paths. ``extract_features_multi`` bridges the two: an explicit ``engine="pyradiomics"``
+(alone) is an untouched passthrough to ``qradiomics.atomic.extract_features``
+-- byte-identical to the scripts' pre-v0.9.9 behaviour, used to reproduce the
+published pyradiomics results -- and every other resolved engine list,
+including the default (rtools), writes the pair to a scratch one-row manifest
+and routes through ``run_multi_extraction``, mirroring
+``qradiomics/cli/commands/extract.py``'s implementation pattern.
 
 Note: ``params_file`` (a full custom PyRadiomics parameter YAML) only
-applies to the default pyradiomics-only path. The registry engines take a
+applies to the explicit pyradiomics-only path. The registry engines take a
 flat ``extraction_settings`` dict (``geometryTolerance``, ``binWidth``, ...),
-not an arbitrary params YAML, so ``params_file`` is ignored whenever a
-non-default engine is requested.
+not an arbitrary params YAML, so ``params_file`` is ignored (with a warning)
+whenever another engine is used.
 """
 from __future__ import annotations
 
 import csv
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -35,6 +36,8 @@ from qradiomics.extractor_registry import resolve_engines, run_multi_extraction
 
 __all__ = ["extract_features_multi"]
 
+log = logging.getLogger(__name__)
+
 
 def extract_features_multi(
     image: sitk.Image,
@@ -47,10 +50,11 @@ def extract_features_multi(
 ) -> Dict[str, Any]:
     """Extract radiomics features for one (image, mask) pair via ``engine``.
 
-    ``engine=None`` (or anything that resolves to ``["pyradiomics"]`` alone,
-    the backward-compatible default) calls
-    ``qradiomics.atomic.extract_features`` directly. Any other resolved
-    engine list (a single non-pyradiomics engine, a comma-list, or ``"all"``)
+    ``engine=None`` resolves to the registry default (rtools). Only an
+    explicit ``engine="pyradiomics"`` (alone) calls
+    ``qradiomics.atomic.extract_features`` directly (the old default, e.g. for
+    reproducing the published LIDC pyradiomics results). Any other resolved
+    engine list (rtools, a comma-list, or ``"all"``)
     runs through ``qradiomics.extractor_registry.run_multi_extraction`` via a
     scratch one-row manifest and returns that row's (possibly
     ``<engine>_``-prefixed) feature dict.
@@ -60,6 +64,12 @@ def extract_features_multi(
         return extract_features(
             image, mask, params_file=params_file, label=label,
             geometry_tolerance=geometry_tolerance,
+        )
+
+    if params_file is not None:
+        log.warning(
+            "params_file is a PyRadiomics parameter file and is ignored by engine(s) %s; "
+            "pass engine='pyradiomics' to apply it.", engines,
         )
 
     with tempfile.TemporaryDirectory(prefix="qr_engine_extract_") as tmp:

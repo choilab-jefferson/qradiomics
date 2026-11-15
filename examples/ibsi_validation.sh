@@ -6,13 +6,14 @@
 #           "IBSI 1 chapter 2 digital phantom" + "IBSI 1 CT radiomics phantom"
 # Pipeline: Clone the IBSI data_sets repo, build a manifest pointing at the
 #           bundled NRRD/NIfTI volumes + masks, and run qr extract with the
-#           ct-default pattern. Optional: compare PyRadiomics output against
+#           ct-default pattern. Optional: compare PyRadiomics output (ENGINE=pyradiomics) against
 #           the IBSI reference table for each feature class.
 # =============================================================================
 set -euo pipefail
 
 IBSI_ROOT="${IBSI_ROOT:?set IBSI_ROOT to the cloned theibsi/data_sets directory}"
 OUT="${OUT:-./runs/ibsi}"
+ENGINE="${ENGINE:-rtools}"   # native default; ENGINE=pyradiomics for the full PyRadiomics set (needs pyradiomics from git)
 
 mkdir -p "$OUT"
 
@@ -32,7 +33,7 @@ $SUBSET,CT,$IMAGE,$MASK
 EOF
 
 # ─── 2. Extract ──────────────────────────────────────────────────────────────
-qr extract -m "$OUT/manifest.csv" -p ct-default -o "$OUT/features.csv"
+qr extract -m "$OUT/manifest.csv" -p ct-default --engine "$ENGINE" -o "$OUT/features.csv"
 
 echo ""
 echo "Done. Outputs in $OUT/:"

@@ -72,7 +72,7 @@ LUNGx-cal / LUNGx-test protocol and the canonical command sequence.
 
 | Script | Purpose | Inputs | Outputs |
 | :--- | :--- | :--- | :--- |
-| `pipelines/lidc_idri/extract_features.py` | Per-(reader, nodule) PyRadiomics 1409 + spiculation on LIDC XML masks | converted LIDC-IDRI-out | wide features CSV |
+| `pipelines/lidc_idri/extract_features.py` | Per-(reader, nodule) features (rtools default; `--engine pyradiomics` for the 1409 PyRadiomics set) + spiculation on LIDC XML masks | converted LIDC-IDRI-out | wide features CSV |
 | `pipelines/lidc_idri/extract_lungx.py` | LUNGx with intensity-based region-grow masks | LUNGx TCIA + xlsx | wide features CSV |
 | `pipelines/lidc_idri/extract_cir.py` | LIDC / LUNGx with **CIRDataset paper-grade masks** | CIRDataset_LCSR archive | wide features CSV |
 | `pipelines/lidc_idri/ahsn_proxy.py` | Choi 2014 AHSN — annotated nodule centroids + random lung-tissue negatives | LIDC-IDRI-out | candidates CSV (180-D AHSN per row) |

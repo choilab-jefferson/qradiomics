@@ -80,9 +80,10 @@ def list_templates():
 )
 @click.option(
     "--engine",
-    default="pyradiomics",
-    help="Extraction engine(s) for the 'extract' step: pyradiomics, "
-    "pysera, rtools, a comma-list, or 'all' (tcia_to_ml only)",
+    default=None,
+    help="Extraction engine(s) for the 'extract' step: rtools, pysera, "
+    "pyradiomics, a comma-list, or 'all'. Default: the pattern's configured "
+    "extractor (rtools if it names none).",
 )
 @click.option("--outdir", default="runs/cohort", help="Workflow output directory")
 @click.option(
@@ -140,7 +141,7 @@ def plan_cmd(
         kwargs["outcome"] = outcome
     if "max_series" in sig:
         kwargs["max_series"] = max_series
-    if "engine" in sig:
+    if "engine" in sig and engine:
         kwargs["engine"] = engine
 
     plan = fn(**kwargs)

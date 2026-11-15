@@ -2,7 +2,8 @@
 name: qradiomics
 description: >-
   Work inside the qradiomics repository — a lung-radiomics research CLI (`qr`) and
-  Python toolkit built on PyRadiomics, scikit-learn, and lifelines. Use this skill
+  Python toolkit with a native `rtools` extraction engine (optional PyRadiomics),
+  scikit-learn, and lifelines. Use this skill
   whenever the task touches this repo: running or wiring up the `qr` CLI (convert,
   extract, results merge, analyze, ml, shape, delta, workflow, tcia, pacs, lidc),
   writing radiomics feature-extraction or modeling code, calling the atomic Python
@@ -45,9 +46,9 @@ prints the installed version; `reports/reproducibility.md` holds the paper proto
 
 | Stage | Commands | What it does |
 |---|---|---|
-| **data** | `tcia collections\|series\|download\|clinical`, `pacs …`, `lidc convert\|convert-cohort`, `convert manifest-from-dir`, `anonymize` | Get cohorts (TCIA public / PACS network / LIDC XML), strip PHI, build the manifest CSV |
+| **data** | `tcia collections\|series\|download\|clinical`, `pacs …`, `lidc convert\|convert-cohort`, `convert manifest-from-dir`, `select validate`, `anonymize` | Get cohorts (TCIA public / PACS network / LIDC XML), strip PHI, build the manifest CSV, validate a pair manifest |
 | **image** | `convert dicom-series`, `convert rtstruct`, `convert fix-preamble`, `preprocess`, `register`, `hu-correct` | DICOM→NRRD, RTSTRUCT→label, resample/normalize, register moving↔fixed, cross-scanner HU harmonization |
-| **features** | `extract` (PyRadiomics ~1409), `shape extract` (AHSN 2014 + spiculation 2021), `delta` (longitudinal Δ/trend), `pattern list\|search` | Turn image+mask pairs into feature CSVs |
+| **features** | `extract` (engines: `rtools` native, `pyradiomics` optional ~1409), `shape extract` (AHSN 2014 + spiculation 2021), `delta` (longitudinal Δ/trend), `pattern list\|search` | Turn image+mask pairs into feature CSVs |
 | **modeling** | `results merge`, `analyze survival\|classify\|importance`, `ml train\|predict\|evaluate`, `bench` | Join clinical, fit Cox / classifiers, leakage-safe CV models, multi-model benchmark |
 | **assembly** | `workflow templates\|plan\|show\|scaffold\|run` | Chain all of the above into a runnable, parallel, cacheable pipeline |
 | **config** | `config …`, `info` | CLI config, PACS profiles, version |
@@ -78,17 +79,40 @@ These come from `AGENTS.md §8` and exist because this is clinical-imaging code:
 
 ## Install
 
-pyradiomics has broken PyPI metadata, so order matters — install it from upstream
-git **first**, then the package:
+PyPI first. Python 3.11+, no GPU. This works on Colab and any fresh venv:
+
+```bash
+pip install -U qradiomics               # `qr` CLI + native `rtools` extraction engine
+pip install -U "qradiomics[rtstruct]"   # + rt-utils, needed by `qr convert rtstruct`
+qr --version && qr info
+```
+
+The `rtools` engine is a pure-Python, ITK-free port (with an opt-in IBSI-1 profile) and is the engine to use when `pyradiomics` is not installed:
+
+```bash
+qr extract -m manifest.csv --engine rtools -o features.csv
+```
+
+`pyradiomics` is **optional**. Since v0.9.9 `qr extract` defaults to the native `rtools`
+engine, and every shipped pattern names it. rtools computes Original-image features only
+(97: intensity, shape, GLCM/GLRLM; no LoG/Wavelet/filtered images, no `binWidth` or
+params-YAML settings). pyradiomics has no PyPI wheels for Python 3.10+, so install it from
+upstream git only if you need the PyRadiomics feature set (e.g. `-p nsclc-survival`
+Aerts/Lung1 ~1130 features, wavelet/LoG) and select it with `--engine pyradiomics`.
+Feature names/values differ between engines, so never mix them:
 
 ```bash
 pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
-pip install -e .            # in a clone; installs the qr / qradiomics / qrdx entry points
+```
+
+Working in a clone instead (development, running the tests):
+
+```bash
+pip install -e ".[test]"    # in a clone; installs the qr / qradiomics / qrdx entry points
 ```
 
 The one-shot backend for a fresh clone + venv + smoke test is `scripts/kickoff.sh`.
-Verify with `qr info` and `python -m pytest tests/test_lidc.py -q` (→ 13 passed).
-Python 3.11+, no GPU.
+Verify with `qr info` and `python -m pytest tests/test_lidc.py -q`.
 
 ## The `qr` CLI at a glance
 
@@ -104,7 +128,8 @@ qr convert rtstruct -c <ct_dir> -s RTSTRUCT.dcm -r GTV-1 -o GTV-label.nrrd
 qr convert manifest-from-dir -i <root> -o manifest.csv           # pairs image ↔ mask
 
 # image → features
-qr extract -m manifest.csv -p ct-default -o features.csv         # ~1409 PyRadiomics features
+qr extract -m manifest.csv -o features.csv                       # native rtools engine (default, no pyradiomics needed)
+qr extract -m manifest.csv -p ct-default --engine pyradiomics -o features.csv  # ~1409 PyRadiomics features (needs pyradiomics)
 qr shape extract -m manifest.csv -o shape_features.csv           # AHSN 2014 + spiculation 2021
 qr delta -f features.csv --pair 'delta=post-pre' -o delta.csv    # longitudinal delta/trend
 
@@ -124,7 +149,9 @@ of `qr extract` needs wiring, you are almost always producing or fixing a manife
 
 Patterns (`qr extract -p <id>`) select the feature set. `qr pattern list` shows the
 real ids: `ct-default`, `nsclc-survival`, `survival-analysis`, `standard-radiomics`.
-`ct-default` yields ~1409 features; omitting `-p` also enables all image types/features.
+With `--engine pyradiomics`, `ct-default` yields ~1409 features (omitting `-p` also enables all
+image types/features). Under the default rtools engine the pattern's filtered image types and
+feature classes are not applied (97 features).
 
 ## Building workflows & pipelines (the main event)
 
@@ -142,7 +169,12 @@ qr workflow run plan.json --executor inline --dry-run        # print exact comma
 qr workflow run plan.json --executor nextflow                # default: per-patient parallel + cache + HPC
 ```
 
-Executors: **nextflow** (default, production), **prefect** (secondary), **inline**
+For cohorts driven by a **pair manifest** (one row per image x label pair: CT series, RTSTRUCT,
+ROI candidates), check it first with `qr select validate pairs.csv [--check-paths]`; it
+lists every contract violation before any compute is spent. Template:
+`qr workflow plan -t rt_pair_radiomics --pair-manifest pairs.csv --clinical clinical.csv --engine rtools -o plan.json`.
+
+Executors: **nextflow** (default, production; `qr workflow run plan.json --executor nextflow`, needs `nextflow` and Java 17+), **prefect** (secondary), **inline**
 (small-cohort, in-process). To ship a cohort as a deployable bundle, mirror
 `pipelines/lung1/` (`plan.json` + `nextflow.config` + `deploy.sh`). The full
 data model, editing patterns, and pipeline-directory recipe are in `references/workflows.md`.

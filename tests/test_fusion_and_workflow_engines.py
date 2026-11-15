@@ -95,7 +95,7 @@ def test_cli_fuse(tmp_path, engines):
 
 
 def test_engines_property_backward_compatible():
-    assert FeatureExtractionConfig().engines == ("pyradiomics",)
+    assert FeatureExtractionConfig().engines == ("rtools",)
     assert FeatureExtractionConfig(extractor="pysera").engines == ("pysera",)
     cfg = FeatureExtractionConfig(extractor=["pyradiomics", "pysera", "pyradiomics"])
     assert cfg.engines == ("pyradiomics", "pysera")
@@ -119,6 +119,12 @@ def test_plan_multi_engine_single_step():
 
 def test_plan_default_engine_flag():
     plan = template_dicom_to_ml(**KW)
+    cmd = _extract_cmd(plan, "extract")
+    assert cmd[cmd.index("--engine") + 1] == "rtools"
+
+
+def test_plan_explicit_pyradiomics_engine_flag():
+    plan = template_dicom_to_ml(engine="pyradiomics", **KW)
     cmd = _extract_cmd(plan, "extract")
     assert cmd[cmd.index("--engine") + 1] == "pyradiomics"
 

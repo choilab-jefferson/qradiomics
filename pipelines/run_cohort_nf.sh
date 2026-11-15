@@ -20,7 +20,7 @@
 #   OUT          — output dir (default runs/<collection>)
 #   CLINICAL     — clinical CSV (default clinical/<collection>.csv)
 #   MAX_SERIES   — limit TCIA download (default 0 = all)
-#   ENGINE       — extraction engine(s) (default pyradiomics)
+#   ENGINE       — extraction engine(s) (default: the pattern's extractor, rtools if none)
 #   NF_PROFILE   — Nextflow profile (default local; slurm)
 #   NF_RUN_DIR   — Nextflow run dir (default $OUT/nf_run)
 # =============================================================================
@@ -45,7 +45,7 @@ qr workflow plan -t tcia_to_ml \
     --collection "$COLLECTION" --roi "$ROI" --pattern "$PATTERN" \
     --task "$TASK" --outcome "$OUTCOME" \
     --clinical "$CLINICAL" \
-    --max-series "${MAX_SERIES:-0}" --engine "${ENGINE:-pyradiomics}" \
+    --max-series "${MAX_SERIES:-0}" ${ENGINE:+--engine "$ENGINE"} \
     --outdir "$OUT" --output "$OUT/plan.json"
 
 qr workflow run "$OUT/plan.json" --executor nextflow \

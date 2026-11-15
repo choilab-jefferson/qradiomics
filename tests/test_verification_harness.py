@@ -60,14 +60,17 @@ class TestCompareFeatureDicts:
         assert any("extra" in l for l in labels)
 
 
-# Optional local cohort root (set QR_PARITY_CASES_DIR to enable).
+# Optional local data: QR_PARITY_CASES_DIR holds <case>/ subdirs; QR_PARITY_CASES
+# is a comma-separated list of at least two case ids to sweep.
 _PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent"))
+_PARITY_CASES = [c for c in os.environ.get("QR_PARITY_CASES", "").split(",") if c][:2]
 
 
 @pytest.mark.skipif(
     not _PARITY_ROOT.exists()
+    or len(_PARITY_CASES) < 2
     or importlib.util.find_spec("radiomics") is None,
-    reason="local cohort or pyradiomics absent — sweep integration skipped",
+    reason="QR_PARITY_CASES_DIR / QR_PARITY_CASES unset or pyradiomics absent — sweep integration skipped",
 )
 def test_run_ab_sweep_self_pair_is_zero_diff(tmp_path):
     """Sweep qradiomics.atomic against itself across 2 real cases — must
@@ -76,16 +79,8 @@ def test_run_ab_sweep_self_pair_is_zero_diff(tmp_path):
 
     # Build a tiny manifest in-memory
     cases = [
-        (
-            "parity_case",
-            "parity_case_planCT_cropped-1mm.nrrd",
-            "parity_case_planCT_manual_cropped-1mm-label.nrrd",
-        ),
-        (
-            "case14",
-            "case14_planCT_cropped-1mm.nrrd",
-            "case14_planCT_manual_cropped-1mm-label.nrrd",
-        ),
+        (pid, f"{pid}_planCT_cropped-1mm.nrrd", f"{pid}_planCT_manual_cropped-1mm-label.nrrd")
+        for pid in _PARITY_CASES
     ]
     manifest = tmp_path / "m.csv"
     manifest.write_text(
@@ -117,4 +112,4 @@ def test_run_ab_sweep_self_pair_is_zero_diff(tmp_path):
     summary_csv = (tmp_path / "out" / "per_case_summary.csv").read_text()
     assert "case_id" in summary_csv
     assert "n_diffs" in summary_csv
-    assert "parity_case" in summary_csv
+    assert _PARITY_CASES[0] in summary_csv

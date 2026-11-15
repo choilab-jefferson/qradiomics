@@ -2,7 +2,27 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-0.9.3-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
+[![Version](https://img.shields.io/badge/version-0.9.9-orange.svg)](https://github.com/choilab-jefferson/qradiomics/releases)
+
+## Quick start in Colab
+
+No install on your machine: open a notebook, run all cells. Both use public data only
+and the native `rtools` extraction engine, so a plain `pip install qradiomics` is enough.
+
+| Notebook | What it shows | Open |
+|---|---|---|
+| `examples/ibsi1_phantom_colab.ipynb` | IBSI-1 digital phantom validated against the consensus reference values (no data download) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/choilab-jefferson/qradiomics/blob/main/examples/ibsi1_phantom_colab.ipynb) |
+| `examples/lung1_survival_colab.ipynb` | TCIA NSCLC-Radiomics (Lung1): `qr select validate` -> `qr extract` -> `qr results merge` -> `qr analyze survival` on a small subset | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/choilab-jefferson/qradiomics/blob/main/examples/lung1_survival_colab.ipynb) |
+
+```python
+!pip install -qU qradiomics      # CLI + native rtools engine; pyradiomics is optional
+!qr --version
+```
+
+Use qradiomics when you have image + segmentation pairs (DICOM CT/PET with RTSTRUCT, or
+NRRD) and want a reproducible path from DICOM to radiomics features to a Cox / classifier
+result, driven by one CLI. Each notebook ends with an optional section on driving the same
+commands with an AI agent.
 
 ## Kick-off
 
@@ -94,7 +114,9 @@ whole chain:
 ```bash
 # Atomic tasks
 qr convert dicom-series / rtstruct / manifest-from-dir
-qr extract        -m manifest.csv -p <pattern> -o features.csv
+qr extract        -m manifest.csv -o features.csv                                  # native rtools engine (default)
+qr extract        -m manifest.csv -p <pattern> -o features.csv                     # engine named by the pattern (shipped patterns: rtools)
+qr extract        -m manifest.csv -p nsclc-survival --engine pyradiomics -o features.csv  # full PyRadiomics set (Aerts, ~1130 features)
 qr extract        -m manifest.csv -o features.csv --engine pyradiomics,pysera,rtools  # multi-engine
 qr results merge  -f features.csv -c clinical.csv -o analysis_ready.csv
 qr analyze {survival,classify,importance} -i analysis_ready.csv ...
@@ -153,9 +175,33 @@ pip install -e .[pysera]     # plus the PySERA extraction engine (`qr extract --
 pip install -e .[pysera-deep]  # + torch/torchvision for PySERA's deep-feature extraction mode
 ```
 
-Python 3.11 or newer is required. PyRadiomics, SimpleITK, lifelines,
+Python 3.11 or newer is required. SimpleITK, lifelines,
 scikit-learn, statsmodels, scipy, and pandas are pulled in as
 dependencies.
+
+`qr extract` uses the native `rtools` engine by default (every shipped pattern and
+cohort plan names it), which needs no extra package. PyRadiomics is optional: it
+cannot be installed from PyPI on Python 3.10+, so install it from upstream git only
+if you need it and select it with `--engine pyradiomics`:
+
+```bash
+pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"
+```
+
+Feature names and values differ between engines, so do not mix features extracted
+with different engines in one analysis.
+
+**What `rtools` does not reproduce.** It computes Original-image 2D/3D intensity,
+shape and GLCM/GLRLM features (97 per patient, radiomics-tools names). It does not
+compute filtered images (LoG, Wavelet, Square, SquareRoot, Logarithm, Exponential,
+Gradient, LBP), GLSZM/GLDM/NGTDM classes, or apply pyradiomics settings (`binWidth`,
+resampling, `normalize`, `preCrop`, a params YAML), and it does not emit
+`original_*` / `wavelet-*` feature names. The shipped patterns keep those settings
+(and their `config_ref` params files); they take effect with `--engine pyradiomics`.
+To reproduce Aerts / Lung1 (~1130 features), the ~1409-feature `ct-default` set, or
+the LIDC paper reproductions, run for example
+`qr extract -m manifest.csv -p nsclc-survival --engine pyradiomics -o features.csv`
+(`qr extract` prints a note when rtools ignores pattern settings).
 
 After install, `qr`, `qradiomics`, and `qrdx` are available on `$PATH`
 and point at `qradiomics.cli.main:cli`.
@@ -232,12 +278,15 @@ qr convert manifest-from-dir \
   --mask-glob  '*_GTV-label.nrrd' \
   -o  "$USER_DATA/Lung1-out/manifest.csv"
 
-# 4. PyRadiomics extraction under the nsclc-survival pattern
+# 4. Extraction under the nsclc-survival pattern with the pyradiomics engine (needs
+#    pyradiomics installed -- see Installation). Without `--engine pyradiomics` the
+#    default rtools engine gives ~97 Original-image features instead of the Aerts set.
 #    (Original + LoG + Wavelet + Square + SquareRoot + Logarithm ×
 #     {firstorder, shape, glcm, glrlm, glszm, gldm, ngtdm} ≈ 1130 features)
 qr extract \
   -m "$USER_DATA/Lung1-out/manifest.csv" \
   -p nsclc-survival \
+  --engine pyradiomics \
   -o "$USER_DATA/Lung1-out/features.csv"
 
 # 5. Join with the published clinical table (download once)
@@ -450,7 +499,7 @@ gluing required.
 | `qr preprocess`             | image      | bbox crop + isotropic resample per (image, mask) row          |
 | `qr register`               | image      | Rigid Mattes-MI/LBFGSB moving→fixed (Scenario C mask transfer)|
 | `qr hu-correct`             | image      | Histogram-match CBCT to a reference CT                        |
-| `qr extract`                | features   | Multi-engine extraction (PyRadiomics/PySERA/rtools) → features.csv |
+| `qr extract`                | features   | rtools (default) / PyRadiomics / PySERA → features.csv (manifest + pattern) |
 | `qr shape extract`          | features   | AHSN + spiculation shape descriptors                          |
 | `qr delta`                  | features   | DeltaPair (A - B) + trend slope per patient across timepoints |
 | `qr results merge`          | features   | features.csv + clinical.csv → analysis_ready.csv              |

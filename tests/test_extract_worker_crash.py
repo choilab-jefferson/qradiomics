@@ -73,7 +73,11 @@ def test_extract_survives_killed_worker(tmp_path, monkeypatch, caplog):
     out = tmp_path / "features.csv"
 
     with caplog.at_level(logging.ERROR, logger="qradiomics.extractor"):
-        result = CliRunner().invoke(extract, ["-m", str(manifest), "-o", str(out), "-j", "2"])
+        # pyradiomics is no longer the default engine, so request it explicitly.
+        result = CliRunner().invoke(
+            extract,
+            ["-m", str(manifest), "-o", str(out), "-j", "2", "--engine", "pyradiomics"],
+        )
 
     # No traceback should escape; the command exits cleanly.
     assert result.exit_code == 0, result.output

@@ -1,5 +1,5 @@
 """qr extract — read a manifest CSV, run one or more extraction engines
-(pyradiomics/pysera/rtools) in-process, write features.csv."""
+(rtools [default] / pysera / pyradiomics) in-process, write features.csv."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from uuid import uuid4
 import click
 
 from qradiomics import PatternLoader
+from qradiomics.extractor import PYRADIOMICS_INSTALL_HINT, pyradiomics_available
 from qradiomics.extractor_registry import resolve_engines, run_multi_extraction
 
 # PySERA category names for each PyRadiomics feature_classes entry (pattern
@@ -24,6 +25,32 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     "ngldm": "ngldm",
     "gldzm": "gldzm",
 }
+
+
+def _warn_rtools_ignored(tmpl, bin_width) -> None:
+    """Tell the user which pattern/CLI settings the rtools engine does not apply.
+
+    rtools computes Original-image 2D/3D intensity, shape and GLCM/GLRLM
+    features only. Silent differences from a pyradiomics-oriented pattern would
+    be easy to miss, so say so on stderr (stdout stays clean for scripts).
+    """
+    ignored = []
+    if tmpl is not None:
+        fx = tmpl.feature_extraction
+        filtered = [t for t in (fx.image_types or []) if t != "Original"]
+        if filtered:
+            ignored.append(f"image_types {filtered}")
+        if fx.settings:
+            ignored.append("pattern settings (binWidth, resampling, ...)")
+    if bin_width is not None:
+        ignored.append("--bin-width")
+    if ignored:
+        click.echo(
+            "Note: engine rtools computes Original-image features only and does not "
+            f"apply: {'; '.join(ignored)}. Use --engine pyradiomics for the full "
+            "PyRadiomics feature set.",
+            err=True,
+        )
 
 
 @click.command()
@@ -45,7 +72,9 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     "--pattern",
     "-p",
     default=None,
-    help="Pattern ID (qr pattern list). Omit to use PyRadiomics defaults.",
+    help="Pattern ID (qr pattern list). Omit to use the default engine's own "
+    "settings. Shipped patterns use rtools, which ignores their pyradiomics-only "
+    "settings (filtered image types, binWidth); add --engine pyradiomics to apply them.",
 )
 @click.option(
     "--output",
@@ -62,7 +91,7 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     show_default=True,
     help="Parallel extraction workers (ProcessPoolExecutor). Default 1 keeps "
     "the existing sequential behaviour. Use 4-8 for typical workstations "
-    "or nproc for batch cohorts — PyRadiomics is CPU-bound so wall-clock "
+    "or nproc for batch cohorts — extraction is CPU-bound so wall-clock "
     "scales close to linearly with worker count.",
 )
 @click.option(
@@ -75,9 +104,11 @@ _FEATURE_CLASS_TO_PYSERA_CATEGORY = {
     "--engine",
     type=str,
     default=None,
-    help="Comma-separated extraction engines (pyradiomics,pysera,rtools) or "
-    "'all'. Defaults to the pattern's configured extractor, or "
-    "'pyradiomics' if none.",
+    help="Comma-separated extraction engines (rtools,pysera,pyradiomics) or "
+    "'all'. Defaults to the pattern's configured extractor (rtools for every "
+    "shipped pattern), or 'rtools' (native, no optional dependency) if none. "
+    "pyradiomics is optional: install it from git and request it with "
+    "--engine pyradiomics.",
 )
 @click.option(
     "--case",
@@ -97,6 +128,7 @@ def extract(manifest, only, pattern, output, jobs, bin_width, engine, cases):
     \b
     Example:
         qr extract -m manifest.csv -p nsclc-survival -o features.csv
+        qr extract -m manifest.csv -o features.csv --engine pyradiomics
         qr extract -m manifest.csv -o features.csv --engine pysera
         qr extract -m manifest.csv -o features.csv --engine pyradiomics,pysera
         qr extract -m manifest.csv -o features.csv --engine all
@@ -129,6 +161,13 @@ def extract(manifest, only, pattern, output, jobs, bin_width, engine, cases):
     except KeyError as e:
         click.echo(str(e), err=True)
         raise SystemExit(1)
+
+    if "pyradiomics" in engines and not pyradiomics_available():
+        click.echo(f"Engine 'pyradiomics' requested but unavailable. {PYRADIOMICS_INSTALL_HINT}", err=True)
+        raise SystemExit(1)
+
+    if "rtools" in engines:
+        _warn_rtools_ignored(tmpl, bin_width)
 
     if tmpl is not None and "pysera" in engines:
         categories = []

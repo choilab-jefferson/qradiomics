@@ -79,7 +79,9 @@ class FeatureExtractionConfig(BaseModel):
     """Feature extraction configuration."""
 
     # One engine name, a comma-list ("pyradiomics,pysera"), or a list of names.
-    extractor: Union[str, List[str]] = "pyradiomics"
+    # Patterns that do not name an extractor use the native rtools engine;
+    # patterns that need pyradiomics say so explicitly.
+    extractor: Union[str, List[str]] = "rtools"
     # Path to extractor config; either a single file or a per-modality mapping
     # like {"CT": "pyradiomics/ct_default.yaml"}.
     config_ref: Optional[Union[str, Dict[str, str]]] = None
@@ -102,7 +104,7 @@ class FeatureExtractionConfig(BaseModel):
                 name = name.strip()
                 if name and name not in names:
                     names.append(name)
-        return tuple(names) or ("pyradiomics",)
+        return tuple(names) or ("rtools",)
 
     @property
     def engine_spec(self) -> str:

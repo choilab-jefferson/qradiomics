@@ -16,7 +16,9 @@ Inputs:
 Outputs:
     --out features.csv    One row per (pid, reader, nodule_id) with columns:
         * pid, reader, nodule_id, n_voxels, volume_mm3, malignancy, …
-        * <radiomics>      atomic.extract_features (1409 features)
+        * <radiomics>      engine features: rtools (default, ~97) or, with --engine
+                           pyradiomics, atomic.extract_features (1409 features;
+                           required by reproduce_papers.py / methods_compare.py)
         * spic_Np, spic_Na, spic_Nl, spic_Na_att, spic_s1, spic_s2
 
 Skips nodules whose voxel count < --min-voxels (default 8; mesh extraction
@@ -176,9 +178,10 @@ def main() -> int:
     p.add_argument("--min-voxels", type=int, default=8,
                    help="Skip nodules with < this many voxels (mesh failure guard).")
     p.add_argument("--engine", default=None,
-                   help="Extraction engine(s): pyradiomics (default), pysera, "
-                        "rtools, a comma-list, or 'all'. Omit for unchanged "
-                        "PyRadiomics-only behaviour.")
+                   help="Extraction engine(s): rtools (default), pysera, "
+                        "pyradiomics, a comma-list, or 'all'. Pass "
+                        "'pyradiomics' for the original 1409-feature "
+                        "PyRadiomics behaviour (and --params).")
     p.add_argument("--jobs", "-j", type=int, default=8)
     p.add_argument("--limit", type=int, default=None,
                    help="Stop after N patients.")

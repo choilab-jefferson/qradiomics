@@ -1,6 +1,6 @@
 # IBSI-1 Digital-Phantom Feature Parity
 
-**QA check:** C03 — IBSI-1 compliance (was universal half-credit on a parity_case pin)
+**QA check:** C03 — IBSI-1 compliance (was universal half-credit on a single-case pin)
 **Date:** 2026-06-12
 **Extractor:** `qradiomics.atomic.features.extract_features` (PyRadiomics / `radiomics` 3.1.1.dev111)
 **Phantom:** IBSI-1 chapter-2 digital phantom (`mirp/test/data/ibsi_1_digital_phantom/nifti`, 5x4x4 grid, 74 ROI voxels, grey levels {1,3,4,6})

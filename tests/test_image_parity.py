@@ -61,12 +61,14 @@ class TestCompareImagePair:
         assert diffs["mask"].is_identical
 
 
+# Optional local data: QR_PARITY_CASES_DIR holds <case>/ subdirs; QR_PARITY_CASE names one.
 _PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent"))
+_PARITY_CASE = os.environ.get("QR_PARITY_CASE", "")
 
 
 @pytest.mark.skipif(
     not _PARITY_ROOT.exists(),
-    reason="local cohort absent",
+    reason="QR_PARITY_CASES_DIR unset or absent",
 )
 class TestPreprocessStress:
     """Stress-test preprocess_pair against every local planCT/manual
@@ -74,15 +76,15 @@ class TestPreprocessStress:
     BEFORE JLR runs its Stage 3b AB-parity sweep."""
 
     def test_full_cohort_geometry_aware(self):
-        """preprocess_pair raises on image/mask size mismatch (5 local cases
-        have drifted NRRDs). For the remaining cases the cropped pair
+        """preprocess_pair raises on image/mask size mismatch (some local cases
+        may have drifted NRRDs). For the remaining cases the cropped pair
         must share geometry."""
         from qradiomics.atomic import load_image_and_mask, preprocess_pair
 
         ok = 0
         size_mismatch = 0
         unexpected_fail = []
-        for pdir in sorted(_PARITY_ROOT.glob("Heart*")):
+        for pdir in sorted(_PARITY_ROOT.iterdir()):
             if not pdir.is_dir():
                 continue
             pid = pdir.name
@@ -105,23 +107,22 @@ class TestPreprocessStress:
                 unexpected_fail.append((pid, str(e)[:80]))
 
         assert not unexpected_fail, f"preprocess_pair errored unexpectedly for: {unexpected_fail}"
-        # The known drifted cases on this cohort total 5.
-        assert ok + size_mismatch >= 35
+        assert ok + size_mismatch >= int(os.environ.get("QR_PARITY_MIN_CASES", "1"))
 
 
 @pytest.mark.skipif(
-    not (_PARITY_ROOT / "parity_case").exists(),
-    reason="parity_case fixture absent",
+    not (_PARITY_CASE and (_PARITY_ROOT / _PARITY_CASE).exists()),
+    reason="QR_PARITY_CASE unset or absent",
 )
 def test_preprocess_pair_deterministic():
     """Calling preprocess_pair twice with the same inputs yields
     bit-identical output. Required for any future AB-parity sweep."""
     from qradiomics.atomic import load_image_and_mask, preprocess_pair
 
-    pdir = _PARITY_ROOT / "parity_case"
+    pdir = _PARITY_ROOT / _PARITY_CASE
     img, msk = load_image_and_mask(
-        pdir / "parity_case_planCT_cropped-1mm.nrrd",
-        pdir / "parity_case_planCT_manual_cropped-1mm-label.nrrd",
+        pdir / f"{_PARITY_CASE}_planCT_cropped-1mm.nrrd",
+        pdir / f"{_PARITY_CASE}_planCT_manual_cropped-1mm-label.nrrd",
     )
     a1, b1 = preprocess_pair(img, msk, pad_mm=20.0, resample_mm=(1.0, 1.0, 1.0))
     a2, b2 = preprocess_pair(img, msk, pad_mm=20.0, resample_mm=(1.0, 1.0, 1.0))

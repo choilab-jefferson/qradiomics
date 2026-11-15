@@ -866,7 +866,6 @@ def detect_c02_external(
         "independent",
         "site",
         "institution",
-        
         "external_cohort",
     )
     cv_tokens = ("cross_val", "kfold", "stratifiedkfold", "train_test_split")

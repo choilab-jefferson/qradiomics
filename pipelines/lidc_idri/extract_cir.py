@@ -155,9 +155,10 @@ def main() -> int:
     p.add_argument("--lungx-test-xlsx", help="LUNGx TestSet xlsx")
     p.add_argument("--skip-spiculation", action="store_true")
     p.add_argument("--engine", default=None,
-                   help="Extraction engine(s): pyradiomics (default), pysera, "
-                        "rtools, a comma-list, or 'all'. Omit for unchanged "
-                        "PyRadiomics-only behaviour.")
+                   help="Extraction engine(s): rtools (default), pysera, "
+                        "pyradiomics, a comma-list, or 'all'. Pass "
+                        "'pyradiomics' for the original 1409-feature "
+                        "PyRadiomics behaviour (and --params).")
     p.add_argument("--jobs", "-j", type=int, default=16)
     p.add_argument("--limit", type=int, default=None)
     args = p.parse_args()

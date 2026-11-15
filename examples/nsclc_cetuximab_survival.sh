@@ -14,6 +14,7 @@ set -euo pipefail
 DATASET_ROOT="${DATASET_ROOT:?set DATASET_ROOT to the NSCLC-Cetuximab TCIA directory}"
 CLINICAL_CSV="${CLINICAL_CSV:?set CLINICAL_CSV to the cetuximab clinical CSV}"
 OUT="${OUT:-./runs/nsclc_cetuximab}"
+ENGINE="${ENGINE:-rtools}"   # native default; ENGINE=pyradiomics for the full PyRadiomics set (needs pyradiomics from git)
 ROI="${ROI:-PTV}"   # CTV / PTV / GTV — varies across the cohort; PTV is the most consistent
 
 NRRD_DIR="$OUT/nrrd"
@@ -56,6 +57,7 @@ done
 qr extract \
   -m "$OUT/manifest.csv" \
   -p nsclc-survival \
+  --engine "$ENGINE" \
   -o "$OUT/features.csv"
 
 # ─── 4. Merge with clinical OS data ──────────────────────────────────────────
@@ -78,6 +80,6 @@ echo ""
 echo "Done. Outputs in $OUT/:"
 echo "  nrrd/                 per-patient *_CT.nrrd and *_${ROI}-label.nrrd"
 echo "  manifest.csv          patients × {patient_id, modality, image_path, mask_path}"
-echo "  features.csv          patients × ~1130 features"
+echo "  features.csv          patients × features ($ENGINE engine; ~1130 pyradiomics)"
 echo "  analysis_ready.csv    features + OS_months + OS_event"
 echo "  cox_results.csv       Cox PH per feature, ranked by p"

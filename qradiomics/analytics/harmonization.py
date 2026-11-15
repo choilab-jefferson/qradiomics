@@ -25,8 +25,7 @@ with only two sites, the *volume* confound dominates the *site*
 confound, and feature-level residualization removes only a small,
 statistically marginal slice of the AUC. These tools are correct and
 necessary for genuinely multi-centre, multi-scanner cohorts, but they
-are not a substitute for the source-decomposed modelling in
-an internal experiment when the confound is volume rather
+are not a substitute for the source-decomposed modelling when the confound is volume rather
 than scanner. Always report the before/after with bootstrap CIs.
 """
 from __future__ import annotations

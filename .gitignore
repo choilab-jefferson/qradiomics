@@ -173,13 +173,12 @@ generated_pipelines/
 # Skill zip packages
 *.zip
 
-# Private data analysis (TJU, local)
+# Private data analysis (local only)
 docs/analysis/
 scripts/analyze_features.*
 scripts/merge_clinical_features.py
 scripts/feature_selection.sh
-scripts/fix_local_csv.py
-scripts/fix_tju_csv.py
+scripts/fix_*_csv.py
 
 # Superpowers plan files (local only)
 docs/superpowers/plans/

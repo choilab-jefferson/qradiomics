@@ -9,7 +9,7 @@ that the stage-3a verification produced:
     feature_diffs.csv      — case_id, feature, legacy, qradiomics, abs, rel
 
 Tolerance defaults to 1e-9 absolute / 1e-9 relative (same as the
-checked-in parity_case golden test).
+checked-in parity golden test).
 
 Usage from JLR or any consumer:
 

@@ -16,8 +16,8 @@ python -m pytest tests/test_lidc.py -q         # the 13 LIDC reproducibility tes
 ```
 
 To smoke-test the feature pipeline itself without a real scan, build a synthetic
-image+mask pair and run `qr extract` on it — this exercises the exact PyRadiomics path
-`qr extract` uses:
+image+mask pair and run `qr extract --engine pyradiomics` on it — this exercises the PyRadiomics path
+(the default engine is rtools, which has its own tests):
 
 ```python
 import numpy as np, SimpleITK as sitk
@@ -31,7 +31,7 @@ for arr, name in [(img, "CT.nrrd"), (mask, "label.nrrd")]:
 ```
 ```bash
 printf 'patient_id,modality,image_path,mask_path\nphantom,CT,CT.nrrd,label.nrrd\n' > manifest.csv
-qr extract -m manifest.csv -p ct-default -o features.csv   # → "phantom ok (1409 features)"
+qr extract -m manifest.csv -p ct-default --engine pyradiomics -o features.csv   # → "phantom ok (1409 features)"
 qr shape extract -m manifest.csv -o shape.csv              # → AHSN (ahsn_000..) + spiculation
 ```
 
@@ -44,7 +44,7 @@ prints every resolved command so you can confirm flags/paths against zero real f
 For **numerical correctness** of feature values, the IBSI digital phantom has published
 closed-form reference values. `examples/ibsi_validation.sh` clones
 [`theibsi/data_sets`](https://github.com/theibsi/data_sets), builds a one-row manifest
-against the bundled NRRD phantom, runs `qr extract -p ct-default`, and points you at the
+against the bundled NRRD phantom, runs `qr extract -p ct-default --engine pyradiomics`, and points you at the
 IBSI reference table to diff each feature class. Use this when you changed extraction
 settings and need to prove parity.
 
@@ -68,7 +68,7 @@ qr convert rtstruct -c ./raw/<patient>/<study>/<ct_series> -s <RTSTRUCT.dcm> -r 
 
 # 3. features
 qr convert manifest-from-dir -i nrrd -o manifest.csv
-qr extract -m manifest.csv -p ct-default -o features.csv
+qr extract -m manifest.csv -p ct-default --engine pyradiomics -o features.csv
 
 # 4. modeling (needs a clinical CSV; qr tcia clinical fetches collection metadata)
 qr tcia clinical -c "NSCLC-Radiomics" -o clinical.csv
@@ -102,9 +102,10 @@ A 10-patient LIDC smoke is ≈ 10 min; the full 1,018-patient run is ≈ 6 h.
 - **TCIA needs network and disk.** Full collections are large — always cap with
   `--max-series` for a smoke run, and clean up `raw/` afterward (large `*.nrrd`/DICOM
   are `.gitignore`d but eat the session disk allowance).
-- **`pyradiomics` install is the usual failure point**, not qradiomics. Install it from
-  upstream git *first* (`pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"`);
-  its PyPI metadata is broken. If a transitive build (docopt/pykwalify) or a NumPy 2.x
+- **`pyradiomics` is optional and is the usual failure point**, not qradiomics. Prefer
+  `qr extract --engine rtools` (native, installs everywhere). If you need PyRadiomics,
+  install it from upstream git (`pip install "pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git"`);
+  it has no PyPI wheels for Python 3.10+. If a transitive build (docopt/pykwalify) or a NumPy 2.x
   ABI mismatch blocks it, that's a pyradiomics packaging issue — pin `numpy<2` and
   install pyradiomics's deps (`pywavelets`, `pykwalify`, `six`) before it.
 - **Never let PHI into logs or commits** while testing. `pid`/`patient_id` stay

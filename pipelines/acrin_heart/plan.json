@@ -16,7 +16,7 @@
     "outcome": "OS_event",
     "time_col": "OS_days",
     "event_col": "OS_event",
-    "engine": "pyradiomics"
+    "engine": "rtools"
   },
   "steps": [
     {

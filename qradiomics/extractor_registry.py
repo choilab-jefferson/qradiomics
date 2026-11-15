@@ -5,7 +5,7 @@ qradiomics/classification/registry.py's MODEL_REGISTRY pattern.
 Provides:
     EXTRACTOR_REGISTRY  name -> zero-arg constructor
     ALL_ENGINES          tuple of every registered engine name
-    DEFAULT_ENGINE        single-engine backward-compat default
+    DEFAULT_ENGINE        engine used when none is requested or configured (rtools)
     build_extractor(name)         instantiate one engine
     resolve_engines(spec, ...)    parse a comma-list/"all" spec into names
     run_multi_extraction(...)     run one or many engines, merge if >1
@@ -34,7 +34,10 @@ EXTRACTOR_REGISTRY: Dict[str, Callable[[], Any]] = {
 }
 
 ALL_ENGINES = tuple(EXTRACTOR_REGISTRY)
-DEFAULT_ENGINE = "pyradiomics"
+# Native rtools is the default: it has no optional dependency, whereas
+# pyradiomics cannot be installed from PyPI on Python 3.10+. Request
+# pyradiomics explicitly with ``--engine pyradiomics`` (or a pattern that names it).
+DEFAULT_ENGINE = "rtools"
 
 
 def build_extractor(name: str) -> Any:

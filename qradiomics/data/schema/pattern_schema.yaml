@@ -195,8 +195,8 @@ preprocessing:
 feature_extraction:
   extractor:
     type: string
-    enum: ["pyradiomics", "custom"]
-    default: "pyradiomics"
+    enum: ["rtools", "pyradiomics", "pysera", "custom"]
+    default: "rtools"
 
   config_ref:
     type: string

@@ -20,7 +20,7 @@ qradiomics-public is positioned as a **portable, plug-in benchmark harness** for
 | **TCIA bundled XML / xlsx** (LIDC-XML-only.zip, LUNGx truth xlsx) | per-series annotations | `pipelines/lidc_idri/extract_features.py` (XML), `pipelines/lidc_idri/extract_lungx.py` (xlsx) |
 | **Zenodo** (CIRDataset 6762573) | paper-grade nodule meshes + masks (NRRD per nodule) | `pipelines/lidc_idri/extract_cir.py` |
 | **GitHub** (nadeemlab/CIR, choilab-jefferson/CIR, pylidc, lidc2dicom) | reference implementations / annotation lists | one-off ports — see MATLAB_PORT_MAP for the LIDC XML port |
-| **Local DICOM trees** (institutional cohorts, e.g. NSCLC-Cetuximab/RTOG-0617 from `$HOME/data/...`) | DICOM + RTSTRUCT | `pipelines/<cohort>_local/` |
+| **Local DICOM trees** (institutional cohorts, e.g. NSCLC-Cetuximab/RTOG-0617 from a local data root) | DICOM + RTSTRUCT | `pipelines/<cohort>_local/` |
 
 ## Pipeline contract
 

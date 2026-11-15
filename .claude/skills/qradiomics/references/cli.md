@@ -59,18 +59,21 @@ LIDC-IDRI-0001,CT,/data/nrrd/LIDC-IDRI-0001_CT.nrrd,/data/labels/LIDC-IDRI-0001_
 Read a manifest, run PyRadiomics per patient, stream results to `features.csv`
 (~1409 features/row). Output is observable in real time (tail / `pipelines/monitor.py`).
 ```bash
-qr extract -m manifest.csv -p ct-default -o features.csv [--jobs N] [--bin-width 25]
+qr extract -m manifest.csv -p ct-default --engine pyradiomics -o features.csv [--jobs N] [--bin-width 25]
 ```
 - `-p/--pattern` picks the extraction settings (an id from `qr pattern list`, see
-  [pattern](#pattern)). `ct-default` → ~1409 features. **Omit `-p`** to enable ALL image
-  types + ALL feature classes (also ~1409). `--bin-width` overrides the pattern's binWidth.
+  [pattern](#pattern)). With `--engine pyradiomics`, `ct-default` → ~1409 features (**omit `-p`** to
+  enable ALL image types + ALL feature classes, also ~1409; `--bin-width` overrides the
+  pattern's binWidth). With the default `rtools` engine the pattern's image types,
+  feature classes and binWidth are ignored (97 Original-image features; a note is printed).
 - `--jobs N` runs N worker processes, one patient each. A crashing worker is isolated
   (see `tests/test_extract_worker_crash.py`) — the run continues and logs the failure.
-- Verified: on a synthetic sphere phantom, `qr extract -p ct-default` prints
+- Verified: on a synthetic sphere phantom, `qr extract -p ct-default --engine pyradiomics` prints
   `ok (1409 features)` and writes a 1410-column CSV (`patient_id` + 1409 features).
 - **Dev/main addition (post-v0.9.3, not present when this reference was authored on
-  `public`):** `--engine <pyradiomics,pysera,rtools|all>` (comma-separated, default
-  `pyradiomics`) runs one or more extraction engines in a single pass, e.g.
+  `public`):** `--engine <rtools,pysera,pyradiomics|all>` (comma-separated; default is the
+  pattern's configured extractor, which is `rtools` for every shipped pattern since
+  v0.9.9 — was `pyradiomics`; pyradiomics-only pattern settings need `--engine pyradiomics`) runs one or more extraction engines in a single pass, e.g.
   `qr extract -m manifest.csv -o features.csv --engine pyradiomics,pysera,rtools`.
   See `qr extract --help`.
 

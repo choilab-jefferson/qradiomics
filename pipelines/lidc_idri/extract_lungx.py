@@ -212,9 +212,10 @@ def main() -> int:
     p.add_argument("--skip-spiculation", action="store_true",
                    help="Skip spiculation features (radiomics only — much faster)")
     p.add_argument("--engine", default=None,
-                   help="Extraction engine(s): pyradiomics (default), pysera, "
-                        "rtools, a comma-list, or 'all'. Omit for unchanged "
-                        "PyRadiomics-only behaviour.")
+                   help="Extraction engine(s): rtools (default), pysera, "
+                        "pyradiomics, a comma-list, or 'all'. Pass "
+                        "'pyradiomics' for the original 1409-feature "
+                        "PyRadiomics behaviour (and --params).")
     args = p.parse_args()
 
     truth = _load_truth(Path(args.truth_cal), Path(args.truth_test))

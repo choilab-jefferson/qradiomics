@@ -14,6 +14,23 @@ and `<OUT>` with your paths.
 
 Each script is idempotent: re-running skips already-converted files.
 
+## Colab notebooks
+
+Run in Google Colab with no local install. Public data only; features come from the
+native `rtools` engine (`pip install qradiomics` is enough, PyRadiomics is optional).
+
+| Notebook | Data | Open in Colab |
+|---|---|---|
+| `ibsi1_phantom_colab.ipynb` | IBSI-1 digital phantom (one small JSON, no archive download) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/choilab-jefferson/qradiomics/blob/main/examples/ibsi1_phantom_colab.ipynb) |
+| `lung1_survival_colab.ipynb` | TCIA NSCLC-Radiomics (Lung1), small subset by default (`N_PATIENTS`) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/choilab-jefferson/qradiomics/blob/main/examples/lung1_survival_colab.ipynb) |
+
+Each notebook ends with an optional "Drive this with an agent" section
+(`nexus-lite`; see the `nexus-colab` skill in
+[choilab-jefferson/nexus.lite](https://github.com/choilab-jefferson/nexus.lite)).
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/choilab-jefferson/nexus.lite/blob/main/notebooks/qradiomics_medimage_colab_demo.ipynb)
+Demo: drive qradiomics with an agent from a Colab runtime (`qradiomics_medimage_colab_demo.ipynb` in nexus.lite).
+
 ## Pre-requisites
 
 ```bash

@@ -97,7 +97,7 @@ def test_c01_na_when_no_source(tmp_path):
 
 # Outcome-aware feature reduction fit once on the whole training set, then the
 # reduced matrix is cross-validated — the canonical radiomics selection leak
-# (mirrors internal_analysis run_reproduce.py + models.py CV).
+# (mirrors a typical reproduce-script + models.py CV).
 REDUCTION_LEAK_PIPELINE = textwrap.dedent(
     """
     import feature_reduction

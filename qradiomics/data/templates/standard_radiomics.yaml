@@ -112,7 +112,12 @@ preprocessing:
 # FEATURE EXTRACTION
 # =============================================================================
 feature_extraction:
-  extractor: pyradiomics
+  # Default engine is the native rtools port (no extra install). It computes
+  # Original-image 2D/3D intensity, shape and GLCM/GLRLM features only, so the
+  # image_types, feature_classes, settings and config_ref below are applied only
+  # with the pyradiomics engine:
+  #   qr extract -p standard-radiomics --engine pyradiomics   (needs pyradiomics from git)
+  extractor: rtools
   # Config selected based on modality: CT -> ct_default.yaml, PET -> pet_default.yaml
   config_ref:
     CT: pyradiomics/ct_default.yaml

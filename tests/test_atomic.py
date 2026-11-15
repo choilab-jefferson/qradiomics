@@ -200,20 +200,21 @@ class TestHUCorrection:
         assert abs(m_mean - ref_mean) < abs(sh_mean - ref_mean)
 
 
-# ─── integration with real local cohort (skip if absent) ─────────────────
+# ─── integration with a real local parity case (skip if absent) ───────────
 
-# Optional local cohort: point QR_PARITY_CASES_DIR at a directory holding parity_case/.
-_PARITY_ROOT = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / "parity_case"
+# Optional local data: QR_PARITY_CASES_DIR holds <case>/ subdirs, QR_PARITY_CASE names one.
+_PARITY_CASE = os.environ.get("QR_PARITY_CASE", "")
+_PARITY_DIR = Path(os.environ.get("QR_PARITY_CASES_DIR", "/nonexistent")) / _PARITY_CASE
 
 
 @pytest.mark.skipif(
-    not _PARITY_ROOT.exists(),
-    reason="local cohort fixtures absent",
+    not (_PARITY_CASE and _PARITY_DIR.exists()),
+    reason="QR_PARITY_CASES_DIR / QR_PARITY_CASE unset or absent",
 )
 @needs_pyradiomics
-class TestIntegrationlocal:
-    img_p = _PARITY_ROOT / "parity_case_planCT_cropped-1mm.nrrd"
-    msk_p = _PARITY_ROOT / "parity_case_planCT_manual_cropped-1mm-label.nrrd"
+class TestIntegrationParityCase:
+    img_p = _PARITY_DIR / f"{_PARITY_CASE}_planCT_cropped-1mm.nrrd"
+    msk_p = _PARITY_DIR / f"{_PARITY_CASE}_planCT_manual_cropped-1mm-label.nrrd"
 
     def test_load_and_extract(self):
         img, msk = load_image_and_mask(self.img_p, self.msk_p)
